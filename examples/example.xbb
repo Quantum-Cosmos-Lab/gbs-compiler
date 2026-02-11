@@ -1,0 +1,22 @@
+name GBS
+version 1.0
+target gaussian (shots=1000)
+
+Sgate(0.60)        | 0
+Sgate(0.55, 0.0)   | 1
+Sgate(0.50, pi/4 ) | 2
+Sgate(0.45, 0.3)   | 3
+
+Dgate(0.10)      | 0
+Dgate(0.08, 0.3) | 1
+Dgate(0.06, 0.6) | 2
+Dgate(0.05, 1.0) | 3
+
+BSgate() | (0, 1)
+Rgate(0.20) | 0
+BSgate(pi/4, 0) | (1, 2)
+Rgate(-0.30) | 2
+BSgate(pi/4, 0) | (2, 3)
+Rgate(0.10) | 3
+BSgate(pi/4) | (0, 2)
+BSgate(pi/4) | (1, 3)

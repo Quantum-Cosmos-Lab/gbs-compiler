@@ -1,0 +1,63 @@
+[project]
+name = "gbs-compiler"
+version = "0.1.0"
+description = "Compiler for translating Blackbird quantum optics programs into qubit-based OpenQASM circuits via truncated Fock space encoding."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+    { name = "Grzegorz Czelusta" },
+]
+dependencies = [
+    "pennylane>=0.44.0",
+    "pennylane-qiskit>=0.44.1",
+    "quantum-blackbird>=0.5.0",
+    "sympy>=1.14.0",
+]
+
+[project.urls]
+Documentation = "https://github.com/Quantum-Cosmos-Lab/gbs-compiler#readme"
+Repository = "https://github.com/Quantum-Cosmos-Lab/gbs-compiler"
+Issues = "https://github.com/Quantum-Cosmos-Lab/gbs-compiler/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/gbs_compiler"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=6.0",
+    "ruff>=0.9.0",
+    "mypy>=1.14.0",
+]
+docs = [
+    "mkdocs>=1.6.0",
+    "mkdocs-material>=9.5.0",
+    "mkdocstrings[python]>=0.27.0",
+    "mkdocs-gen-files>=0.5.0",
+    "mkdocs-literate-nav>=0.6.0",
+    "mkdocs-section-index>=0.3.0",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "D"]
+ignore = ["D1"]  # don't require docstrings everywhere during alpha
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
