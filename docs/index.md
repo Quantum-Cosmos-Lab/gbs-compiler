@@ -29,6 +29,7 @@ from gbs_compiler import CompilerGBS
 import blackbird as bb
 import pennylane as qml
 
+# Load and compile Blackbird program
 bb_circuit = bb.dumps(bb.load("circuit.xbb"))
 compiler = CompilerGBS(fock_cutoff=4)
 qasm = compiler.compile_to_qasm(bb_circuit)
@@ -38,7 +39,10 @@ num_q = compiler.required_qubits_num(bb_circuit)
 circ = qml.from_qasm(qasm, measurements=qml.sample())
 dev = qml.device("default.qubit", wires=num_q)
 qnode = qml.QNode(circ, dev, shots=100)
-photons = compiler.binary_to_photon_meas(qnode())
+binary_meas = qnode()
+
+# Convert binary results to photon numbers
+photons = compiler.binary_to_photon_meas(binary_meas)
 ```
 
 ## Next steps

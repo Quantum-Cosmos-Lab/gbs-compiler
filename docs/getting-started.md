@@ -65,17 +65,24 @@ raw = qnode()
 photons = compiler.binary_to_photon_meas(raw)
 print(photons[:5])
 # Example output:
-# [[0 0]
-#  [1 1]
-#  [0 2]
-#  [2 0]
-#  [1 0]]
+# [[0 1]
+#  [0 1]
+#  [0 0]
+#  [0 0]
+#  [0 1]]
 ```
 
 ### 3. Inspect the QASM output
 
 ```python
-print(qasm)
+print(qasm[:99])
+# Output:
+# OPENQASM 2.0;
+# include "qelib1.inc";
+# qreg q[4];
+# creg c[4];
+# rz(3.141592653589793) q[0];
+# cx q[1],q[0];
 ```
 
 The output is standard OpenQASM 2.0 that can be fed to any compatible backend (Qiskit, Cirq, hardware providers, etc.).

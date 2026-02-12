@@ -127,13 +127,13 @@ def decompose_kronecker(
 ) -> tuple[ComplexMatrix, ComplexMatrix]:
     r"""Decompose a 4×4 Kronecker-product matrix into two 2×2 SU(2) factors.
 
-    Given :math:`M = A \otimes B`, recover *A* and *B* (each normalised to
+    Given $M = A \otimes B$, recover *A* and *B* (each normalised to
     unit determinant).
 
     Parameters
     ----------
     AB_matrix : numpy.ndarray
-        4×4 complex matrix that is a tensor product :math:`A \otimes B`.
+        4×4 complex matrix that is a tensor product $A \otimes B$.
         The element ``AB_matrix[0, 0]`` must be non-zero.
 
     Returns
@@ -151,8 +151,8 @@ def decompose_kronecker(
     Notes
     -----
     The decomposition is unique only up to a joint sign flip:
-    :math:`(A, B)` and :math:`(-A, -B)` both satisfy
-    :math:`A \otimes B = M` after SU(2) normalisation.
+    $(A, B)$ and $(-A, -B)$ both satisfy
+    $A \otimes B = M$ after SU(2) normalisation.
 
     Examples
     --------
@@ -187,9 +187,9 @@ def decompose_kronecker(
 # ---------------------------------------------------------------------------
 
 class CVOperation:
-    """Base class for CV quantum operations in truncated Fock space.
+    r"""Base class for CV quantum operations in truncated Fock space.
 
-    Photon-number states :math:`|n⟩` are encoded in binary across one
+    Photon-number states $\ket n$ are encoded in binary across one
     or more qubits.
 
     Parameters
@@ -210,18 +210,6 @@ class CVOperation:
     ------
     ValueError
         If *fock_cutoff* is not 2 or 4.
-
-    Notes
-    -----
-    Binary encoding:
-
-    Photon  cutoff=2   cutoff=4
-    ======  =========  =========
-    |0⟩     ``|0⟩``    ``|00⟩``
-    |1⟩     ``|1⟩``    ``|01⟩``
-    |2⟩     —          ``|10⟩``
-    |3⟩     —          ``|11⟩``
-    ======  =========  =========
     """
 
     def __init__(self, fock_cutoff: int) -> None:
@@ -304,13 +292,11 @@ class CVOperation:
 # ---------------------------------------------------------------------------
 
 class PhaseShift(CVOperation):
-    r"""Phase-shift (rotation) operator :math:`R(\varphi)`.
+    r"""Phase-shift (rotation) operator $R(\varphi)$.
 
     Acts diagonally in the Fock basis:
 
-    .. math::
-
-        R(\varphi)\,|n\rangle = e^{-i n \varphi}\,|n\rangle
+    $$R(\varphi)\,|n\rangle = e^{-i n \varphi}\,|n\rangle$$
 
     Corresponds to ``Rgate`` in Blackbird.
 
@@ -401,10 +387,10 @@ class PhaseShift(CVOperation):
 # ---------------------------------------------------------------------------
 
 class Displacement(CVOperation):
-    r"""Displacement operator :math:`D(\alpha)` with :math:`\alpha = r\,e^{i\varphi}`.
+    r"""Displacement operator $D(\alpha)$ with $\alpha = r\,e^{i\varphi}$.
 
     Translates a quantum state in phase space.  In the truncated Fock basis the
-    matrix is an approximation that becomes exact as :math:`r \to 0`.
+    matrix is an approximation that becomes exact as $r \to 0$.
 
     Corresponds to ``Dgate`` in Blackbird.
 
@@ -423,14 +409,14 @@ class Displacement(CVOperation):
         r"""Symbolic Fock-basis matrix for displacement.
 
         The matrix is constructed as
-        :math:`D(r,\varphi) = U(\varphi)\,D(r,0)\,U(\varphi)^\dagger`
-        where :math:`U` is the phase-shift operator and :math:`D(r,0)` is a
+        $D(r,\varphi) = U(\varphi)\,D(r,0)\,U(\varphi)^\dagger$
+        where $U$ is the phase-shift operator and $D(r,0)$ is a
         real-axis displacement.
 
         Parameters
         ----------
         r : sympy expression
-            Displacement amplitude :math:`|\alpha|`.
+            Displacement amplitude $|\alpha|$.
         phi : sympy expression
             Displacement phase (radians).
 
@@ -524,7 +510,7 @@ class Displacement(CVOperation):
         -----
         * ``cutoff=2`` — Euler-angle sequence ``RZ(-φ) · RY(2r) · RZ(φ)``.
         * ``cutoff=4`` — magic-basis decomposition:
-          :math:`U(\varphi)\,M^\dagger\,(A \otimes B)\,M\,U(\varphi)^\dagger`.
+          $U(\varphi)\,M^\dagger\,(A \otimes B)\,M\,U(\varphi)^\dagger$.
         """
         wires = self.map_mode_to_wires(mode)
 
@@ -558,7 +544,7 @@ class Displacement(CVOperation):
 # ---------------------------------------------------------------------------
 
 class Squeeze(CVOperation):
-    r"""Single-mode squeezing operator :math:`S(\xi)` with :math:`\xi = r\,e^{i\varphi}`.
+    r"""Single-mode squeezing operator $S(\xi)$ with $\xi = r\,e^{i\varphi}$.
 
     Reduces quantum fluctuations in one quadrature at the expense of amplifying
     the conjugate quadrature.
@@ -599,8 +585,8 @@ class Squeeze(CVOperation):
         Notes
         -----
         For ``cutoff=4`` the matrix couples the |0⟩↔|2⟩ and |1⟩↔|3⟩
-        subspaces with coupling strengths :math:`r/\sqrt{2}` and
-        :math:`\sqrt{3/2}\,r` respectively.
+        subspaces with coupling strengths $r/\sqrt{2}$ and
+        $\sqrt{3/2}\,r$ respectively.
         """
         if self.fock_cutoff == 2:
             return Matrix([[1, 0], [0, 1]])
@@ -675,16 +661,9 @@ class Squeeze(CVOperation):
 # ---------------------------------------------------------------------------
 
 class BeamSplitter(CVOperation):
-    r"""50:50 beam splitter :math:`\text{BS}(\pi/4, 0)`.
+    r"""50:50 beam splitter $\text{BS}(\pi/4, 0)$.
 
-    Couples two optical modes with equal splitting ratio:
-
-    .. math::
-
-        \hat a_\text{out} = \frac{\hat a_\text{in} + \hat b_\text{in}}{\sqrt 2},
-        \qquad
-        \hat b_\text{out} = \frac{\hat a_\text{in} - \hat b_\text{in}}{\sqrt 2}.
-
+    Couples two optical modes with equal splitting ratio.
     Corresponds to ``BSgate(pi/4, 0)`` in Blackbird.
 
     Parameters
@@ -714,7 +693,7 @@ class BeamSplitter(CVOperation):
         Notes
         -----
         Basis ordering is lexicographic in photon numbers:
-        :math:`|n_1, n_2\rangle` with :math:`n_1` varying fastest.
+        $|n_1, n_2\rangle$ with $n_1$ varying fastest.
         """
         if self.fock_cutoff == 2:
             return Matrix([

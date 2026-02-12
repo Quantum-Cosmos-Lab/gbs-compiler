@@ -87,13 +87,6 @@ The gate decomposition for cutoff = 4 uses a CNOT + $R_Y$/$R_Z$ sequence that ex
 
 ## Beam splitter — $\text{BS}(\pi/4, 0)$
 
-The 50:50 beam splitter couples two modes:
-
-$$
-\hat{a}_{\text{out}} = \frac{\hat{a}_{\text{in}} + \hat{b}_{\text{in}}}{\sqrt{2}}, \qquad
-\hat{b}_{\text{out}} = \frac{\hat{a}_{\text{in}} - \hat{b}_{\text{in}}}{\sqrt{2}}
-$$
-
 ### Cutoff = 2
 
 The two-mode Fock space has dimension 4 ($|00\rangle, |01\rangle, |10\rangle, |11\rangle$), and the beam splitter matrix is 4×4.  The qubit decomposition uses a Hadamard + CNOT + $R_Y$ sequence (6 gates total).
