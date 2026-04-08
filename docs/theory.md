@@ -14,17 +14,17 @@ For **cutoff = 2** (1 qubit per mode):
 
 | Photon state | Qubit state |
 |:-------------|:------------|
-| $\ket0$ | $\ket0$ |
-| $\ket1$ | $\ket1$ |
+| $|0\rangle$ | $|0\rangle$ |
+| $|1\rangle$ | $|1\rangle$ |
 
 For **cutoff = 4** (2 qubits per mode):
 
 | Photon state | Qubit state |
 |:-------------|:------------|
-| $\ket0$ | $\ket{00}$ |
-| $\ket1$ | $\ket{01}$ |
-| $\ket2$ | $\ket{10}$ |
-| $\ket3$ | $\ket{11}$ |
+| $|0\rangle$ | $|00\rangle$ |
+| $|1\rangle$ | $|01\rangle$ |
+| $|2\rangle$ | $|10\rangle$ |
+| $|3\rangle$ | $|11\rangle$ |
 
 ## Phase shift — $R(\varphi)$
 

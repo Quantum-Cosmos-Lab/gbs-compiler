@@ -189,7 +189,7 @@ def decompose_kronecker(
 class CVOperation:
     r"""Base class for CV quantum operations in truncated Fock space.
 
-    Photon-number states $\ket n$ are encoded in binary across one
+    Photon-number states $|n\rangle$ are encoded in binary across one
     or more qubits.
 
     Parameters
@@ -470,7 +470,7 @@ class Displacement(CVOperation):
         ]))
 
         U = PhaseShift(fock_cutoff=self.fock_cutoff).symbolic_matrix(phi)
-        return U * D_real * U.adjoint()
+        return U.adjoint() * D_real * U
 
     def numerical_matrix(self, r: float, phi: float) -> ComplexMatrix:
         """Numerical Fock-basis matrix for displacement.
@@ -763,8 +763,8 @@ class BeamSplitter(CVOperation):
             return QuantumScript([
                 qml.Hadamard(wires=wires[0]),
                 qml.CNOT(wires=wires),
-                qml.RY(np.pi / 4, wires=wires[0]),
-                qml.RY(np.pi / 4, wires=wires[1]),
+                qml.RY(-np.pi / 4, wires=wires[0]),
+                qml.RY(-np.pi / 4, wires=wires[1]),
                 qml.CNOT(wires=wires),
                 qml.Hadamard(wires=wires[0]),
             ])
