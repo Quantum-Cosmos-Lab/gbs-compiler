@@ -190,7 +190,7 @@ class CompilerGBS:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _parse_operation_args(
+    def _parse_operation_args_r_phi(
         op: dict[str, Any],
         default_phi: float = 0.0,
     ) -> tuple[float, float]:
@@ -201,13 +201,26 @@ class CompilerGBS:
         if len(args) == 1:
             return (args[0], default_phi)
         return (args[0], args[1])
+    
+    @staticmethod
+    def _parse_operation_args_theta_phi(
+        op: dict[str, Any],
+        default_phi: float = 0.0,
+    ) -> tuple[float, float]:
+        """Extract ``(theta, phi)`` from a Blackbird operation dict."""
+        args = op.get("args", [])
+        if len(args) == 0:
+            return (np.pi / 4, default_phi)
+        if len(args) == 1:
+            return (args[0], default_phi)
+        return (args[0], args[1])
 
     def _compile_sgate(self, op: dict[str, Any]) -> QuantumScript:
-        r, phi = self._parse_operation_args(op)
+        r, phi = self._parse_operation_args_r_phi(op)
         return Squeeze(self.fock_cutoff).gate_decomposition(r=r, phi=phi, mode=op["modes"][0])
 
     def _compile_dgate(self, op: dict[str, Any]) -> QuantumScript:
-        r, phi = self._parse_operation_args(op)
+        r, phi = self._parse_operation_args_r_phi(op)
         return Displacement(self.fock_cutoff).gate_decomposition(r=r, phi=phi, mode=op["modes"][0])
 
     def _compile_rgate(self, op: dict[str, Any]) -> QuantumScript:
@@ -215,16 +228,8 @@ class CompilerGBS:
         return PhaseShift(self.fock_cutoff).gate_decomposition(phi=phi, mode=op["modes"][0])
 
     def _compile_bsgate(self, op: dict[str, Any]) -> QuantumScript:
-        args = op.get("args", [])
-        if len(args) >= 1 and not np.isclose(args[0], np.pi / 4):
-            raise ValueError(
-                f"Only 50:50 beam splitter (theta=π/4) is supported, got theta={args[0]:.4f}"
-            )
-        if len(args) >= 2 and not np.isclose(args[1], 0):
-            raise ValueError(
-                f"Only beam splitter with phi=0 is supported, got phi={args[1]:.4f}"
-            )
-        return BeamSplitter(self.fock_cutoff).gate_decomposition(modes=tuple(op["modes"]))
+        theta, phi = self._parse_operation_args_theta_phi(op)
+        return BeamSplitter(self.fock_cutoff).gate_decomposition(theta=theta, phi=phi, modes=tuple(op["modes"]))
 
     _OP_DISPATCH = {
         "Squeezed": "_compile_sgate",

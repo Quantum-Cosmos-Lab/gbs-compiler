@@ -197,23 +197,31 @@ class TestBeamSplitter:
     @pytest.mark.parametrize("cutoff", [2, 4])
     def test_unitarity(self, cutoff):
         bs = BeamSplitter(cutoff)
-        M = bs.numerical_matrix()
+        theta = 0.5
+        phi = 0.3
+        M = bs.numerical_matrix(theta=theta, phi=phi)
         assert _is_unitary(M)
 
     def test_cutoff2_shape(self):
         bs = BeamSplitter(2)
-        assert bs.numerical_matrix().shape == (4, 4)
+        theta = 0.5
+        phi = 0.3
+        assert bs.numerical_matrix(theta=theta, phi=phi).shape == (4, 4)
 
     def test_cutoff4_shape(self):
         bs = BeamSplitter(4)
-        assert bs.numerical_matrix().shape == (16, 16)
+        theta = 0.5
+        phi = 0.3
+        assert bs.numerical_matrix(theta=theta, phi=phi).shape == (16, 16)
 
     @pytest.mark.parametrize("cutoff", [2, 4])
     def test_decomposition_reconstruction(self, cutoff):
         bs = BeamSplitter(cutoff)
-        gates = bs.gate_decomposition(modes=(0, 1))
+        theta = 0.5
+        phi = 0.3
+        gates = bs.gate_decomposition(theta=theta, phi=phi, modes=(0, 1))
         M_reconstructed = qml.matrix(gates, wire_order=range(2*bs.num_qubits_per_mode))
-        M_expected = bs.numerical_matrix()
+        M_expected = bs.numerical_matrix(theta=theta, phi=phi)
         # assert _is_close_up_to_global_phase(M_reconstructed, M_expected, atol=1e-10)
         assert_allclose(M_reconstructed, M_expected, atol=1e-10)
 
