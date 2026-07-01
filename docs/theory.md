@@ -85,7 +85,7 @@ For cutoff = 2 the squeezing operator is the identity (the $|2\rangle$ state nee
 
 The gate decomposition for cutoff = 4 uses a CNOT + $R_Y$/$R_Z$ sequence that exploits the block-diagonal structure.
 
-## Beam splitter — $\text{BS}(\pi/4, 0)$
+## Beam splitter — $\text{BS}(\theta, \phi)$
 
 ### Cutoff = 2
 
@@ -116,5 +116,4 @@ Blackbird source (.xbb)
 ## Limitations
 
 - Only **cutoff = 2** and **cutoff = 4** are currently supported.
-- Only the **50:50 beam splitter** ($\theta = \pi/4$, $\varphi = 0$) is implemented.  Arbitrary beam-splitter angles will raise a `ValueError`.
 - The truncated Fock-space approximation introduces errors for large squeezing or displacement parameters.

@@ -18,3 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `compile_to_pennylane` method for direct PennyLane `QuantumScript` output.
 - MkDocs documentation with theory guide and API reference.
 - Test suite with pytest.
+
+## [0.2.0]
+
+### Changed
+
+- `BeamSplitter` CV operations now support arbitrary theta and phi parameters.
+- Test suite updated for paramterized `BeamSplitter`.
+- MkDocs documentation updated for paramterized `BeamSplitter`.
