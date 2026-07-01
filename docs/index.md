@@ -20,7 +20,7 @@ GBS Compiler bridges continuous-variable (CV) photonic quantum computing and gat
 | `Sgate(r, φ)`      | `Squeeze`        | 1     | Single-mode squeezing        |
 | `Dgate(r, φ)`      | `Displacement`   | 1     | Coherent-state displacement  |
 | `Rgate(φ)`         | `PhaseShift`     | 1     | Phase-space rotation         |
-| `BSgate(π/4, 0)`   | `BeamSplitter`   | 2     | 50:50 beam splitter          |
+| `BSgate(θ, φ)`     | `BeamSplitter`   | 2     | Beam splitter                |
 
 ## Quick example
 

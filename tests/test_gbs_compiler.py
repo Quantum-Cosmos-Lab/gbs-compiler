@@ -1,10 +1,10 @@
 """Tests for gbs_compiler.operations and gbs_compiler.compiler."""
 
 import numpy as np
-import pytest
-from numpy.testing import assert_allclose
-import sympy as sp
 import pennylane as qml
+import pytest
+import sympy as sp
+from numpy.testing import assert_allclose
 
 from gbs_compiler.compiler import CompilerGBS
 from gbs_compiler.operations import (
@@ -89,7 +89,12 @@ class TestPhaseShift:
         if cutoff == 2:
             expected_matrix = np.array([[1, 0], [0, np.exp(-1j * phi)]])
         elif cutoff == 4:
-            expected_matrix = np.diag([1, np.exp(-1j * phi), np.exp(-2 * 1j * phi), np.exp(-3 * 1j * phi)])
+            expected_matrix = np.diag([
+                1,
+                np.exp(-1j * phi),
+                np.exp(-2 * 1j * phi),
+                np.exp(-3 * 1j * phi)
+            ])
         assert_allclose(M, expected_matrix, atol=1e-12)
 
     @pytest.mark.parametrize("cutoff", [2, 4])
@@ -98,9 +103,17 @@ class TestPhaseShift:
         phi = sp.symbols("phi")
         M_sym = ps.symbolic_matrix(phi)
         if cutoff == 2:
-            expected_matrix = sp.Matrix([[1, 0], [0, sp.exp(-sp.I * phi)]])
+            expected_matrix = sp.Matrix([
+                [1, 0],
+                [0, sp.exp(-sp.I * phi)]
+            ])
         elif cutoff == 4:
-            expected_matrix = sp.diag(1, sp.exp(-sp.I * phi), sp.exp(-2 * sp.I * phi), sp.exp(-3 * sp.I * phi))
+            expected_matrix = sp.diag(
+                1,
+                sp.exp(-sp.I * phi),
+                sp.exp(-2 * sp.I * phi),
+                sp.exp(-3 * sp.I * phi)
+            )
         assert M_sym == expected_matrix
 
     @pytest.mark.parametrize("cutoff", [2, 4])
@@ -197,23 +210,31 @@ class TestBeamSplitter:
     @pytest.mark.parametrize("cutoff", [2, 4])
     def test_unitarity(self, cutoff):
         bs = BeamSplitter(cutoff)
-        M = bs.numerical_matrix()
+        theta = 0.5
+        phi = 0.3
+        M = bs.numerical_matrix(theta=theta, phi=phi)
         assert _is_unitary(M)
 
     def test_cutoff2_shape(self):
         bs = BeamSplitter(2)
-        assert bs.numerical_matrix().shape == (4, 4)
+        theta = 0.5
+        phi = 0.3
+        assert bs.numerical_matrix(theta=theta, phi=phi).shape == (4, 4)
 
     def test_cutoff4_shape(self):
         bs = BeamSplitter(4)
-        assert bs.numerical_matrix().shape == (16, 16)
+        theta = 0.5
+        phi = 0.3
+        assert bs.numerical_matrix(theta=theta, phi=phi).shape == (16, 16)
 
     @pytest.mark.parametrize("cutoff", [2, 4])
     def test_decomposition_reconstruction(self, cutoff):
         bs = BeamSplitter(cutoff)
-        gates = bs.gate_decomposition(modes=(0, 1))
+        theta = 0.5
+        phi = 0.3
+        gates = bs.gate_decomposition(theta=theta, phi=phi, modes=(0, 1))
         M_reconstructed = qml.matrix(gates, wire_order=range(2*bs.num_qubits_per_mode))
-        M_expected = bs.numerical_matrix()
+        M_expected = bs.numerical_matrix(theta=theta, phi=phi)
         # assert _is_close_up_to_global_phase(M_reconstructed, M_expected, atol=1e-10)
         assert_allclose(M_reconstructed, M_expected, atol=1e-10)
 
@@ -224,8 +245,14 @@ class TestBeamSplitter:
 class TestUtilities:
     def test_matrix_to_U3_roundtrip(self):
         """U3 gate matrix should match the original (up to global phase)."""
-        M_expected = np.array([[np.cos(0.3), -np.exp(1j*0.2) * np.sin(0.3)], [np.exp(-1j*0.2) * np.sin(0.3), np.cos(0.3)]])
-        M_expected_phase = np.exp(1j*0.5)*np.array([[np.cos(0.3), -np.exp(1j*0.2) * np.sin(0.3)], [np.exp(-1j*0.2) * np.sin(0.3), np.cos(0.3)]])
+        M_expected = np.array([
+            [np.cos(0.3), -np.exp(1j*0.2) * np.sin(0.3)],
+            [np.exp(-1j*0.2) * np.sin(0.3), np.cos(0.3)]
+        ])
+        M_expected_phase = np.exp(1j*0.5)*np.array([
+            [np.cos(0.3), -np.exp(1j*0.2) * np.sin(0.3)],
+            [np.exp(-1j*0.2) * np.sin(0.3), np.cos(0.3)]
+        ])
         gate = matrix_to_U3(M_expected, wire=0)
         gate_phase = matrix_to_U3(M_expected_phase, wire=0)
         M = qml.matrix(gate, wire_order=[0])
@@ -234,7 +261,10 @@ class TestUtilities:
         assert _is_close_up_to_global_phase(M_phase, M_expected_phase, atol=1e-10)
 
     def test_decompose_kronecker_roundtrip(self):
-        A = np.array([[np.cos(0.5), -np.exp(1j*0.5)*np.sin(0.5)], [np.exp(-1j*0.5)*np.sin(0.5), np.cos(0.5)]])
+        A = np.array([
+            [np.cos(0.5), -np.exp(1j*0.5)*np.sin(0.5)],
+            [np.exp(-1j*0.5)*np.sin(0.5), np.cos(0.5)]
+        ])
         B = np.exp(1j*0.5)*np.array([[np.cos(0.3), -np.sin(0.3)], [np.sin(0.3), np.cos(0.3)]])
         AB = np.kron(A, B)
         Ar, Br = decompose_kronecker(AB)
