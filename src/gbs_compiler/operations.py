@@ -48,17 +48,15 @@ from sympy import (
     I,
     Matrix,
     Rational,
-    S,
     Symbol,
     cos,
     exp,
-    pi,
+    eye,
+    kronecker_product,
     simplify,
     sin,
     sqrt,
     zeros,
-    kronecker_product,
-    eye,
 )
 
 __all__ = [
@@ -707,7 +705,11 @@ class BeamSplitter(CVOperation):
                 [0, sin(theta), cos(theta), 0],
                 [0, 0, 0, 1],
             ])
-            return simplify(kronecker_product(U.adjoint(),eye(2)) * BS_real * kronecker_product(U,eye(2)))
+            return simplify(
+                kronecker_product(U.adjoint(),eye(2)) *
+                BS_real *
+                kronecker_product(U,eye(2))
+            )
 
         # cutoff == 4 — 16×16 matrix
         BS_real = zeros(16, 16)
@@ -774,8 +776,12 @@ class BeamSplitter(CVOperation):
 
         U = PhaseShift(fock_cutoff=self.fock_cutoff).symbolic_matrix(phi)
 
-        return simplify(kronecker_product(U.adjoint(),eye(4)) * BS_real * kronecker_product(U,eye(4)))
-        
+        return simplify(
+            kronecker_product(U.adjoint(),eye(4)) *
+            BS_real *
+            kronecker_product(U,eye(4))
+        )
+
 
     def numerical_matrix(self, theta: float, phi: float) -> ComplexMatrix:
         """Numerical two-mode Fock-basis matrix of the beam splitter.
@@ -882,7 +888,7 @@ class BeamSplitter(CVOperation):
                 control=[w[0], w[1]],
                 control_values=[1, 1],
             ),
-    
+
             # W
             qml.CNOT(wires=[w[2], w[3]]),
             qml.CRY(np.pi / 2, wires=[w[3], w[2]]),
@@ -959,7 +965,7 @@ class BeamSplitter(CVOperation):
                 control=[w[0], w[1]],
                 control_values=[1, 1],
             ),
-    
+
             # W
             qml.CNOT(wires=[w[2], w[3]]),
             qml.CRY(np.pi / 2, wires=[w[3], w[2]]),

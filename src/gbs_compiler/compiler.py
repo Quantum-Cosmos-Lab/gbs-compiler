@@ -201,7 +201,7 @@ class CompilerGBS:
         if len(args) == 1:
             return (args[0], default_phi)
         return (args[0], args[1])
-    
+
     @staticmethod
     def _parse_operation_args_theta_phi(
         op: dict[str, Any],
@@ -229,7 +229,11 @@ class CompilerGBS:
 
     def _compile_bsgate(self, op: dict[str, Any]) -> QuantumScript:
         theta, phi = self._parse_operation_args_theta_phi(op)
-        return BeamSplitter(self.fock_cutoff).gate_decomposition(theta=theta, phi=phi, modes=tuple(op["modes"]))
+        return BeamSplitter(self.fock_cutoff).gate_decomposition(
+            theta=theta,
+            phi=phi,
+            modes=tuple(op["modes"])
+        )
 
     _OP_DISPATCH = {
         "Squeezed": "_compile_sgate",
