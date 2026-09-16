@@ -875,11 +875,11 @@ class BeamSplitter(CVOperation):
             qml.ctrl(qml.PauliX(wires=w[1]), control=w[3], control_values=0),
             qml.X(wires=w[2]),
             # X(w3) of the basis change cancels the X(w3) that opens W^\dagger
- 
+
             # W^\dagger (without its leading X(w3))
             qml.CRY(-np.pi / 2, wires=[w[3], w[2]]),
             qml.CNOT(wires=[w[2], w[3]]),
- 
+
             qml.ctrl(
                 qml.RY(2*theta, wires=w[2]),
                 control=[w[0], w[1]],
@@ -890,11 +890,11 @@ class BeamSplitter(CVOperation):
                 control=[w[0], w[1]],
                 control_values=[1, 1],
             ),
- 
+
             # W (without its trailing X(w3), cancelled against the basis change)
             qml.CNOT(wires=[w[2], w[3]]),
             qml.CRY(np.pi / 2, wires=[w[3], w[2]]),
- 
+
             # undo basis change
             qml.X(wires=w[2]),
             qml.ctrl(qml.PauliX(wires=w[1]), control=w[3], control_values=0),
@@ -913,13 +913,13 @@ class BeamSplitter(CVOperation):
             qml.CNOT(wires=[w[2], w[0]]),
             qml.X(wires=w[2]),
             qml.X(wires=w[3]),
- 
+
             # into the magic basis
             qml.S(wires=w[2]),
             qml.S(wires=w[3]),
             qml.H(wires=w[3]),
             qml.CNOT(wires=[w[3], w[2]]),
- 
+
             qml.ctrl(
                 qml.RY(2*theta, wires=w[2]),
                 control=[w[0], w[1]],
@@ -940,13 +940,13 @@ class BeamSplitter(CVOperation):
                 control=[w[0], w[1]],
                 control_values=[1, 1],
             ),
- 
+
             # out of the magic basis (exact inverse: S^\dagger, not S)
             qml.CNOT(wires=[w[3], w[2]]),
             qml.H(wires=w[3]),
             qml.adjoint(qml.S(wires=w[2])),
             qml.adjoint(qml.S(wires=w[3])),
- 
+
             # undo basis change
             qml.X(wires=w[2]),
             qml.X(wires=w[3]),
@@ -961,12 +961,12 @@ class BeamSplitter(CVOperation):
             qml.CNOT(wires=[w[3], w[0]]),
             qml.CNOT(wires=[w[2], w[0]]),
             qml.CNOT(wires=[w[3], w[1]]),
- 
+
             # W^\dagger
             qml.X(wires=w[3]),
             qml.CRY(-np.pi / 2, wires=[w[3], w[2]]),
             qml.CNOT(wires=[w[2], w[3]]),
- 
+
             # controls on |00>; negative angle because the basis order is reversed
             qml.ctrl(
                 qml.RY(-2*np.sqrt(3)*theta, wires=w[2]),
@@ -978,12 +978,12 @@ class BeamSplitter(CVOperation):
                 control=[w[0], w[1]],
                 control_values=[0, 0],
             ),
- 
+
             # W
             qml.CNOT(wires=[w[2], w[3]]),
             qml.CRY(np.pi / 2, wires=[w[3], w[2]]),
             qml.X(wires=w[3]),
- 
+
             # undo basis change
             qml.CNOT(wires=[w[3], w[1]]),
             qml.CNOT(wires=[w[2], w[0]]),
