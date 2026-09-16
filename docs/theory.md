@@ -93,7 +93,7 @@ The two-mode Fock space has dimension 4 ($|00\rangle, |01\rangle, |10\rangle, |1
 
 ### Cutoff = 4
 
-The joint space has dimension 16, and the 16×16 unitary is factored into five layers $U_1 \cdot U_2 \cdot U_3 \cdot U_4 \cdot U_5$, each implemented with multi-controlled rotations and CNOTs acting on the 4 qubits (2 per mode).
+The $N=4$ beam splitter is decomposed by grouping its photon-number blocks by the parity of $n = n_1 + n_2$. A few CNOTs map each parity onto two sector qubits and a two-qubit register. Because every sector gate is a real $SO(4)$ rotation, in the magic basis it becomes a product of single-qubit rotations with angles linear in $\theta$, implemented by controlled-$Y$ reflections and (uniformly) controlled $R_y$ gates.
 
 ## Compilation pipeline
 

@@ -841,14 +841,16 @@ class BeamSplitter(CVOperation):
 
         all_gates.extend(list(U.gate_decomposition(phi, modes[0])))
 
-        for layer in (
-            self._gate_decomposition_U1,
-            self._gate_decomposition_U2,
-            self._gate_decomposition_U3,
-            self._gate_decomposition_U4,
-            self._gate_decomposition_U5,
-        ):
-            all_gates.extend(list(layer(theta, modes)))
+        # for layer in (
+        #     self._gate_decomposition_U1,
+        #     self._gate_decomposition_U2,
+        #     self._gate_decomposition_U3,
+        #     self._gate_decomposition_U4,
+        #     self._gate_decomposition_U5,
+        # ):
+        #     all_gates.extend(list(layer(theta, modes)))
+
+        all_gates.extend(list(self._gate_decomposition_cutoff4(theta, modes)))
 
         all_gates.extend(list(U.gate_decomposition(phi, modes[0]).adjoint()))
         return QuantumScript(all_gates)
@@ -1001,3 +1003,70 @@ class BeamSplitter(CVOperation):
             ),
             qml.CNOT(wires=[w[1], w[3]]),
         ])
+
+    def _gate_decomposition_cutoff4(self, theta: float, modes: tuple[int, int]) -> QuantumScript:
+        r"""Real part ``BS_real(theta)`` of the cutoff-4 beam splitter.
+
+        Wires ``w = [a_msb, a_lsb, b_msb, b_lsb]``. After
+        ``CX(w2->w0) CX(w3->w1)`` the pair ``(w0, w1)`` labels sectors
+        ``01 = {n=1, n=5}`` and ``11 = {n=3}`` (odd ``n``); one more
+        ``CX(w3->w0)`` gives ``00 = {n=0, n=4}`` and ``10 = {n=2, n=6}``
+        (even ``n``). In every sector the gate acts on ``(w2, w3)`` as an SO(4)
+        matrix, i.e. as single-qubit rotations in the magic basis ``M``.
+        """
+        w = self.map_mode_to_wires(modes[0]) + self.map_mode_to_wires(modes[1])
+        q0, q1, q2, q3 = w
+        pi, s3 = np.pi, np.sqrt(3)
+        g: list[Operation] = []
+
+        def magic():
+            g.extend([qml.S(q2), qml.S(q3), qml.H(q3), qml.CNOT(wires=[q3, q2])])
+
+        def magic_dag():
+            g.extend([qml.CNOT(wires=[q3, q2]), qml.H(q3),
+                      qml.adjoint(qml.S(q2)), qml.adjoint(qml.S(q3))])
+
+        def cry(phi, control, target):  # controlled RY, 2 CNOTs
+            g.extend([qml.RY(phi / 2, wires=target), qml.CNOT(wires=[control, target]),
+                      qml.RY(-phi / 2, wires=target), qml.CNOT(wires=[control, target])])
+
+        def ucry(xi_p, xi_m, target):
+            # RY(2(xi_p+xi_m)) on (q0,q1)=00, RY(2(xi_p-xi_m)) on 10, I if q1=1
+            g.extend([qml.RY(xi_p, wires=target), qml.CNOT(wires=[q1, target]),
+                      qml.RY(xi_p, wires=target), qml.CNOT(wires=[q0, target]),
+                      qml.RY(xi_m, wires=target), qml.CNOT(wires=[q1, target]),
+                      qml.RY(xi_m, wires=target), qml.CNOT(wires=[q0, target])])
+
+        # odd-parity frame
+        g.extend([qml.CNOT(wires=[q2, q0]), qml.CNOT(wires=[q3, q1])])
+        magic()
+
+        # V_odd: n = 1, 3, 5 (active for q1 = 1)
+        g.extend([qml.RX(-pi / 4, wires=q2), qml.RX(5 * pi / 12, wires=q3)])
+        g.extend([qml.CY(wires=[q0, q2]), qml.CY(wires=[q0, q3])])
+        g.extend([qml.RX(-pi / 4, wires=q2), qml.RX(pi / 12, wires=q3)])
+        cry(-2 * theta, q1, q2)
+        cry(-4 * theta, q1, q3)
+        g.extend([qml.RX(pi / 4, wires=q2), qml.RX(-pi / 12, wires=q3)])
+        g.extend([qml.CY(wires=[q0, q2]), qml.CY(wires=[q0, q3])])
+        g.extend([qml.RX(pi / 4, wires=q2), qml.RX(-5 * pi / 12, wires=q3)])
+
+        # switch to the even-parity frame
+        magic_dag()
+        g.append(qml.CNOT(wires=[q3, q0]))
+        magic()
+
+        # V_even: n = 0, 2, 4, 6 (active for q1 = 0)
+        xi_p = -(s3 + 1) * theta / 2
+        xi_m = -(s3 - 1) * theta / 2
+        g.append(qml.CY(wires=[q0, q2]))
+        g.extend([qml.RX(-pi / 4, wires=q2), qml.RX(pi / 4, wires=q3)])
+        ucry(xi_p, xi_m, q2)
+        ucry(xi_p, xi_m, q3)
+        g.extend([qml.RX(pi / 4, wires=q2), qml.RX(-pi / 4, wires=q3)])
+        g.append(qml.CY(wires=[q0, q2]))
+        magic_dag()
+
+        # undo the frame
+        g.extend([qml.CNOT(wires=[q3, q0]), qml.CNOT(wires=[q3, q1]), qml.CNOT(wires=[q2, q0])])
+        return QuantumScript(g)
