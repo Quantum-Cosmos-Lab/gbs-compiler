@@ -794,7 +794,7 @@ class BeamSplitter(CVOperation):
         return np.array(self.symbolic_matrix(theta, phi)).astype(np.complex128)
 
     def gate_decomposition(self, theta: float, phi: float, modes: tuple[int, int]) -> QuantumScript:
-        """Decompose the 50:50 beam splitter into qubit gates.
+        """Decompose arbitrary beam splitter into qubit gates.
 
         Parameters
         ----------
