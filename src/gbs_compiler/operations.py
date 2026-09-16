@@ -794,7 +794,7 @@ class BeamSplitter(CVOperation):
         return np.array(self.symbolic_matrix(theta, phi)).astype(np.complex128)
 
     def gate_decomposition(self, theta: float, phi: float, modes: tuple[int, int]) -> QuantumScript:
-        """Decompose the 50:50 beam splitter into qubit gates.
+        """Decompose arbitrary beam splitter into qubit gates.
 
         Parameters
         ----------
@@ -869,12 +869,14 @@ class BeamSplitter(CVOperation):
     def _gate_decomposition_U2(self, theta: float, modes: tuple[int, int]) -> QuantumScript:
         w = self.map_mode_to_wires(modes[0]) + self.map_mode_to_wires(modes[1])
         return QuantumScript([
+            # basis change (CNOTs followed by X on w2, w3)
             qml.CNOT(wires=[w[3], w[0]]),
             qml.CNOT(wires=[w[2], w[0]]),
             qml.ctrl(qml.PauliX(wires=w[1]), control=w[3], control_values=0),
+            qml.X(wires=w[2]),
+            # X(w3) of the basis change cancels the X(w3) that opens W^\dagger
 
-            # W^\dagger
-            qml.X(wires=w[3]),
+            # W^\dagger (without its leading X(w3))
             qml.CRY(-np.pi / 2, wires=[w[3], w[2]]),
             qml.CNOT(wires=[w[2], w[3]]),
 
@@ -889,11 +891,12 @@ class BeamSplitter(CVOperation):
                 control_values=[1, 1],
             ),
 
-            # W
+            # W (without its trailing X(w3), cancelled against the basis change)
             qml.CNOT(wires=[w[2], w[3]]),
             qml.CRY(np.pi / 2, wires=[w[3], w[2]]),
-            qml.X(wires=w[3]),
 
+            # undo basis change
+            qml.X(wires=w[2]),
             qml.ctrl(qml.PauliX(wires=w[1]), control=w[3], control_values=0),
             qml.CNOT(wires=[w[2], w[0]]),
             qml.CNOT(wires=[w[3], w[0]]),
@@ -901,12 +904,17 @@ class BeamSplitter(CVOperation):
 
     def _gate_decomposition_U3(self, theta: float, modes: tuple[int, int]) -> QuantumScript:
         w = self.map_mode_to_wires(modes[0]) + self.map_mode_to_wires(modes[1])
-        alpha = np.arctan2(-np.sqrt(3)/2 * np.sin(2*theta), np.cos(2*theta))
-        beta = 2.0 * np.arcsin(np.clip(1/2 * np.sin(2*theta), -1.0, 1.0))
+        # B = RZ(alpha) RY(beta) RZ(alpha); arctan2 keeps the correct branch for cos(2θ) < 0
+        alpha = np.arctan2(-np.sqrt(3) * np.sin(2*theta), 2 * np.cos(2*theta))
+        beta = 2.0 * np.arcsin(np.clip(0.5 * np.sin(2*theta), -1.0, 1.0))
         return QuantumScript([
+            # basis change
             qml.CNOT(wires=[w[3], w[1]]),
             qml.CNOT(wires=[w[2], w[0]]),
+            qml.X(wires=w[2]),
+            qml.X(wires=w[3]),
 
+            # into the magic basis
             qml.S(wires=w[2]),
             qml.S(wires=w[3]),
             qml.H(wires=w[3]),
@@ -918,27 +926,30 @@ class BeamSplitter(CVOperation):
                 control_values=[1, 1],
             ),
             qml.ctrl(
-                qml.RZ(2*alpha, wires=w[3]),
+                qml.RZ(alpha, wires=w[3]),
                 control=[w[0], w[1]],
                 control_values=[1, 1],
             ),
             qml.ctrl(
-                qml.RY(2*beta, wires=w[3]),
+                qml.RY(beta, wires=w[3]),
                 control=[w[0], w[1]],
                 control_values=[1, 1],
             ),
             qml.ctrl(
-                qml.RZ(2*alpha, wires=w[3]),
+                qml.RZ(alpha, wires=w[3]),
                 control=[w[0], w[1]],
                 control_values=[1, 1],
             ),
 
+            # out of the magic basis (exact inverse: S^\dagger, not S)
             qml.CNOT(wires=[w[3], w[2]]),
             qml.H(wires=w[3]),
-            qml.S(wires=w[2]),
-            qml.S(wires=w[3]),
+            qml.adjoint(qml.S(wires=w[2])),
+            qml.adjoint(qml.S(wires=w[3])),
 
-
+            # undo basis change
+            qml.X(wires=w[2]),
+            qml.X(wires=w[3]),
             qml.CNOT(wires=[w[2], w[0]]),
             qml.CNOT(wires=[w[3], w[1]]),
         ])
@@ -946,24 +957,26 @@ class BeamSplitter(CVOperation):
     def _gate_decomposition_U4(self, theta: float, modes: tuple[int, int]) -> QuantumScript:
         w = self.map_mode_to_wires(modes[0]) + self.map_mode_to_wires(modes[1])
         return QuantumScript([
+            # basis change (ordinary CNOT on w1, not anti-controlled)
             qml.CNOT(wires=[w[3], w[0]]),
             qml.CNOT(wires=[w[2], w[0]]),
-            qml.ctrl(qml.PauliX(wires=w[1]), control=w[3], control_values=0),
+            qml.CNOT(wires=[w[3], w[1]]),
 
             # W^\dagger
             qml.X(wires=w[3]),
             qml.CRY(-np.pi / 2, wires=[w[3], w[2]]),
             qml.CNOT(wires=[w[2], w[3]]),
 
+            # controls on |00>; negative angle because the basis order is reversed
             qml.ctrl(
-                qml.RY(2*np.sqrt(3)*theta, wires=w[2]),
+                qml.RY(-2*np.sqrt(3)*theta, wires=w[2]),
                 control=[w[0], w[1]],
-                control_values=[1, 1],
+                control_values=[0, 0],
             ),
             qml.ctrl(
-                qml.RY(2*np.sqrt(3)*theta, wires=w[3]),
+                qml.RY(-2*np.sqrt(3)*theta, wires=w[3]),
                 control=[w[0], w[1]],
-                control_values=[1, 1],
+                control_values=[0, 0],
             ),
 
             # W
@@ -971,7 +984,8 @@ class BeamSplitter(CVOperation):
             qml.CRY(np.pi / 2, wires=[w[3], w[2]]),
             qml.X(wires=w[3]),
 
-            qml.ctrl(qml.PauliX(wires=w[1]), control=w[3], control_values=0),
+            # undo basis change
+            qml.CNOT(wires=[w[3], w[1]]),
             qml.CNOT(wires=[w[2], w[0]]),
             qml.CNOT(wires=[w[3], w[0]]),
         ])

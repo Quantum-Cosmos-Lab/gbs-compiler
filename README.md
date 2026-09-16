@@ -13,7 +13,7 @@ GBS Compiler bridges continuous-variable (CV) photonic circuits and discrete-var
 | `Sgate(r, φ)`    | `Squeeze`        | Single-mode squeezing      |
 | `Dgate(r, φ)`    | `Displacement`   | Coherent-state displacement|
 | `Rgate(φ)`       | `PhaseShift`     | Phase-space rotation       |
-| `BSgate(θ, φ)`   | `BeamSplitter`   | Beam splitter              |
+| `BSgate(θ, φ)` | `BeamSplitter`     | Beam splitter        |
 
 **Fock cutoffs:**
 
