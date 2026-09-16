@@ -26,3 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `BeamSplitter` CV operations now support arbitrary theta and phi parameters.
 - Test suite updated for paramterized `BeamSplitter`.
 - MkDocs documentation updated for paramterized `BeamSplitter`.
+
+## [0.2.1]
+
+### Changed
+
+- `BeamSplitter.gate_decomposition` corrected.
