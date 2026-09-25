@@ -13,7 +13,7 @@ quantum computers by encoding photon-number states in binary representation.
 | PhaseShift     | `Rgate(φ)`        | Phase-space rotation        |
 | Displacement   | `Dgate(r, φ)`     | Coherent-state displacement |
 | Squeeze        | `Sgate(r, φ)`     | Single-mode squeezing       |
-| BeamSplitter   | `BSgate(π/4, 0)`  | 50:50 beam splitter         |
+| BeamSplitter   | `BSgate(θ, φ)`    | Beam splitter               |
 
 Each class exposes three representations:
 
@@ -808,7 +808,7 @@ class BeamSplitter(CVOperation):
         Returns
         -------
         QuantumScript
-            Qubit circuit implementing ``BS(π/4, 0)``.
+            Qubit circuit implementing ``BS(θ, φ)``.
 
         Notes
         -----
