@@ -26,6 +26,9 @@ For **cutoff = 4** (2 qubits per mode):
 | $|2\rangle$ | $|10\rangle$ |
 | $|3\rangle$ | $|11\rangle$ |
 
+The first qubit of each mode is the most significant bit.  Mode $m$ occupies the contiguous
+wires $m\,q, \dots, m\,q + q - 1$ with $q = \lceil \log_2 N \rceil$.
+
 ## Phase shift — $R(\varphi)$
 
 The phase-shift operator acts diagonally:

@@ -38,3 +38,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - `BeamSplitter.gate_decomposition` with reduced quantum circuit.
+
+## [0.2.3]
+
+### Fixed
+
+- `CompilerGBS.binary_to_photon_meas` used wrong ordering of bits.
+- Some docstrings described only symmetrical BS.
+- Small fixes.
+
+### Added
+
+- Tests for cutoff at CompilerGBS construction, for supported operations and for end-to-end photon statistics.

@@ -282,6 +282,9 @@ class TestUtilities:
 # Compiler
 # ---------------------------------------------------------------------------
 
+_BB_HEADER = "name test\nversion 1.0\ntarget gaussian (shots=10)\n\n"
+
+
 class TestCompilerGBS:
     @pytest.fixture
     def simple_bb(self):
@@ -313,10 +316,57 @@ class TestCompilerGBS:
 
     def test_binary_to_photon_simple(self):
         comp = CompilerGBS(fock_cutoff=4)
-        # 2 modes, 4 qubits: |01 10⟩ → mode0=1, mode1=2
+        # 2 modes, 4 qubits, MSB first within each mode: |01 10⟩ → mode0=1, mode1=2
         binary = np.array([[0, 1, 1, 0]])
         photons = comp.binary_to_photon_meas(binary)
-        # Little-endian: wire0=0, wire1=1 → 0*1 + 1*2 = 2? No.
-        # wire0 is bit0, wire1 is bit1 → 0 + 1*2 = 2 for mode0
-        # wire2 is bit0, wire3 is bit1 → 1 + 0*2 = 1 for mode1
-        assert_allclose(photons, [[2, 1]])
+        assert_allclose(photons, [[1, 2]])
+
+    def test_binary_to_photon_cutoff2(self):
+        comp = CompilerGBS(fock_cutoff=2)
+        binary = np.array([[1, 0, 1], [0, 1, 0]])
+        assert_allclose(comp.binary_to_photon_meas(binary), binary)
+
+    @pytest.mark.parametrize("cutoff", [0, 1, 3, 8])
+    def test_invalid_cutoff_raises_at_construction(self, cutoff):
+        with pytest.raises(ValueError, match="must be 2 or 4"):
+            CompilerGBS(fock_cutoff=cutoff)
+
+    def test_squeezed_is_supported(self):
+        comp = CompilerGBS(fock_cutoff=4)
+        bb = _BB_HEADER + "Squeezed(0.3) | 0\n"
+        assert "OPENQASM" in comp.compile_to_qasm(bb)
+
+    def test_unsupported_op_lists_all_supported(self):
+        comp = CompilerGBS(fock_cutoff=4)
+        bb = _BB_HEADER + "Kgate(0.3) | 0\n"
+        with pytest.raises(NotImplementedError) as exc:
+            comp.compile_to_qasm(bb)
+        for name in ("Squeezed", "Sgate", "Dgate", "Rgate", "BSgate"):
+            assert name in str(exc.value)
+
+    @pytest.mark.parametrize(
+        "gate, op",
+        [
+            ("Sgate(0.8)", Squeeze(4).numerical_matrix(r=0.8, phi=0.0)),
+            ("Dgate(0.6)", Displacement(4).numerical_matrix(r=0.6, phi=0.0)),
+        ],
+    )
+    def test_end_to_end_photon_statistics(self, gate, op):
+        """Compile → QASM → sample → photon counts must match the Fock matrix."""
+        comp = CompilerGBS(fock_cutoff=4)
+        bb = _BB_HEADER + f"{gate} | 0\nRgate(0.0) | 1\n"
+        qasm = comp.compile_to_qasm(bb)
+        n_qubits = comp.required_qubits_num(bb)
+        circ = qml.from_qasm(qasm, measurements=qml.sample())
+        dev = qml.device("default.qubit", wires=n_qubits, seed=1234)
+        samples = qml.QNode(circ, dev, shots=20_000)()
+
+        photons = comp.binary_to_photon_meas(samples)
+        observed = np.bincount(photons[:, 0], minlength=4) / len(photons)
+        expected = np.abs(op[:, 0]) ** 2
+
+        assert_allclose(observed, expected, atol=0.02)
+        assert np.all(photons[:, 1] == 0)  # untouched mode stays in vacuum
+        if gate.startswith("Sgate"):
+            # squeezed vacuum has only even photon numbers
+            assert np.all(photons[:, 0] % 2 == 0)

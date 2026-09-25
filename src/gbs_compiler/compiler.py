@@ -28,6 +28,7 @@ from pennylane.tape import QuantumScript
 
 from gbs_compiler.operations import (
     BeamSplitter,
+    CVOperation,
     Displacement,
     PhaseShift,
     Squeeze,
@@ -58,29 +59,29 @@ class CompilerGBS:
     Supported Blackbird gates
     -------------------------
     ``Squeezed(r, φ)``
-        Preparing single-mode squeezing, vacum + Sgate.
+        Squeezed vacuum; compiled as ``Sgate(r, φ)`` (the input is assumed,
+        not checked, to be vacuum).
     ``Sgate(r, φ)``
         Single-mode squeezing.
     ``Dgate(r, φ)``
         Displacement.
     ``Rgate(φ)``
         Phase rotation.
-    ``BSgate(π/4, 0)``
-        50:50 beam splitter (only this specific case).
+    ``BSgate(θ, φ)``
+        Beam splitter with arbitrary angles (defaults ``θ = π/4``,
+        ``φ = 0``, i.e. 50:50).
 
     Raises
     ------
     ValueError
-        On unsupported beam-splitter parameters.
+        If *fock_cutoff* is not 2 or 4.
     NotImplementedError
         On encountering an unsupported Blackbird operation.
     """
 
-    _SUPPORTED_OPS = frozenset({"Sgate", "Dgate", "Rgate", "BSgate"})
-
     def __init__(self, fock_cutoff: int) -> None:
         self.fock_cutoff = fock_cutoff
-        self.num_qubits_per_mode = int(np.ceil(np.log2(fock_cutoff)))
+        self.num_qubits_per_mode = CVOperation(fock_cutoff).num_qubits_per_mode
 
     # ------------------------------------------------------------------
     # Public API
@@ -141,7 +142,9 @@ class CompilerGBS:
         """Convert qubit measurement outcomes to photon-number counts.
 
         Each group of ``num_qubits_per_mode`` bits is interpreted as the
-        binary representation of a photon number.
+        binary representation of a photon number, most significant bit
+        first (the mode's first wire is the MSB), matching the encoding used
+        by the gate decompositions.
 
         Parameters
         ----------
@@ -160,9 +163,9 @@ class CompilerGBS:
 
         for mode in range(num_modes):
             wires = self.map_mode_to_wires(mode)
-            for bit_pos, qubit in enumerate(wires):
-                photon_counts[:, mode] += (
-                    binary_samples[:, qubit].astype(np.int64) * (2**bit_pos)
+            for qubit in wires:
+                photon_counts[:, mode] = (
+                    2 * photon_counts[:, mode] + binary_samples[:, qubit].astype(np.int64)
                 )
         return photon_counts
 
@@ -255,7 +258,7 @@ class CompilerGBS:
             if method_name is None:
                 raise NotImplementedError(
                     f"Operation '{name}' is not supported. "
-                    f"Supported: {sorted(self._SUPPORTED_OPS)}"
+                    f"Supported: {sorted(self._OP_DISPATCH)}"
                 )
 
             gates.extend(list(getattr(self, method_name)(op)))
