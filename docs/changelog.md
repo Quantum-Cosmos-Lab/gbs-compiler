@@ -50,3 +50,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Tests for cutoff at CompilerGBS construction, for supported operations and for end-to-end photon statistics.
+
+## [Unreleased]
+
+### Added
+
+- `SqueezedVacuum` operation: simplified squeezed vacuum preparation, `RY(-√2 r) · PhaseShift(φ)` on a single qubit (cutoff 4).
+
+### Changed
+
+- `CompilerGBS` compiles `Squeezed`, and `Sgate` applied as the first operation on a mode, with `SqueezedVacuum` instead of the full `Squeeze` decomposition.
+- `CompilerGBS` raises `ValueError` when `Squeezed` is applied to a mode that was already acted on (previously it silently applied the full `Squeeze` gate).

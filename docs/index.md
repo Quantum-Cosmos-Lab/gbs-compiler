@@ -16,8 +16,8 @@ GBS Compiler bridges continuous-variable (CV) photonic quantum computing and gat
 
 | Blackbird gate      | Python class     | Modes | Description                  |
 |:--------------------|:-----------------|:------|:-----------------------------|
-| `Squeezed(r, φ)`   | `Squeeze`        | 1     | Preparing single-mode squeezed state, vacuum + Sgate |
-| `Sgate(r, φ)`      | `Squeeze`        | 1     | Single-mode squeezing        |
+| `Squeezed(r, φ)`   | `SqueezedVacuum` | 1     | Preparing single-mode squeezed vacuum state |
+| `Sgate(r, φ)`      | `Squeeze`        | 1     | Single-mode squeezing (`SqueezedVacuum` if first gate on the mode) |
 | `Dgate(r, φ)`      | `Displacement`   | 1     | Coherent-state displacement  |
 | `Rgate(φ)`         | `PhaseShift`     | 1     | Phase-space rotation         |
 | `BSgate(θ, φ)`     | `BeamSplitter`   | 2     | Beam splitter                |

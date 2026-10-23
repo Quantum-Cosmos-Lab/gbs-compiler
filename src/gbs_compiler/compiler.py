@@ -32,6 +32,7 @@ from gbs_compiler.operations import (
     Displacement,
     PhaseShift,
     Squeeze,
+    SqueezedVacuum,
 )
 
 __all__ = ["CompilerGBS"]
@@ -59,10 +60,12 @@ class CompilerGBS:
     Supported Blackbird gates
     -------------------------
     ``Squeezed(r, φ)``
-        Squeezed vacuum; compiled as ``Sgate(r, φ)`` (the input is assumed,
-        not checked, to be vacuum).
+        Squeezed vacuum preparation; compiled with :class:`SqueezedVacuum`.
+        Must be the first operation on its mode.
     ``Sgate(r, φ)``
-        Single-mode squeezing.
+        Single-mode squeezing.  When it is the first operation on its mode
+        (mode still in vacuum), the simplified :class:`SqueezedVacuum`
+        decomposition is used.
     ``Dgate(r, φ)``
         Displacement.
     ``Rgate(φ)``
@@ -74,7 +77,8 @@ class CompilerGBS:
     Raises
     ------
     ValueError
-        If *fock_cutoff* is not 2 or 4.
+        If *fock_cutoff* is not 2 or 4, or (at compile time) if ``Squeezed``
+        is applied to a mode that was already acted on.
     NotImplementedError
         On encountering an unsupported Blackbird operation.
     """
@@ -222,6 +226,12 @@ class CompilerGBS:
         r, phi = self._parse_operation_args_r_phi(op)
         return Squeeze(self.fock_cutoff).gate_decomposition(r=r, phi=phi, mode=op["modes"][0])
 
+    def _compile_squeezed_vacuum(self, op: dict[str, Any]) -> QuantumScript:
+        r, phi = self._parse_operation_args_r_phi(op)
+        return SqueezedVacuum(self.fock_cutoff).gate_decomposition(
+            r=r, phi=phi, mode=op["modes"][0]
+        )
+
     def _compile_dgate(self, op: dict[str, Any]) -> QuantumScript:
         r, phi = self._parse_operation_args_r_phi(op)
         return Displacement(self.fock_cutoff).gate_decomposition(r=r, phi=phi, mode=op["modes"][0])
@@ -239,7 +249,7 @@ class CompilerGBS:
         )
 
     _OP_DISPATCH = {
-        "Squeezed": "_compile_sgate",
+        "Squeezed": "_compile_squeezed_vacuum",
         "Sgate": "_compile_sgate",
         "Dgate": "_compile_dgate",
         "Rgate": "_compile_rgate",
@@ -250,6 +260,7 @@ class CompilerGBS:
         """Parse Blackbird and return a ``QuantumScript``."""
         program = bb.loads(bb_circuit)
         gates: list = []
+        touched_modes: set[int] = set()  # modes no longer guaranteed to be in vacuum
 
         for op in program.operations:
             name = op["op"]
@@ -260,8 +271,16 @@ class CompilerGBS:
                     f"Operation '{name}' is not supported. "
                     f"Supported: {sorted(self._OP_DISPATCH)}"
                 )
+            if name == "Squeezed" and op["modes"][0] in touched_modes:
+                raise ValueError(
+                    f"'Squeezed' prepares a state and must be the first operation on "
+                    f"mode {op['modes'][0]}, but the mode was already acted on."
+                )
+            if name == "Sgate" and op["modes"][0] not in touched_modes:
+                method_name = "_compile_squeezed_vacuum"
 
             gates.extend(list(getattr(self, method_name)(op)))
+            touched_modes.update(op["modes"])
 
         return QuantumScript(ops=gates)
 

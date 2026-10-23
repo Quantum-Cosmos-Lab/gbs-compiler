@@ -88,6 +88,22 @@ For cutoff = 2 the squeezing operator is the identity (the $|2\rangle$ state nee
 
 The gate decomposition for cutoff = 4 uses a CNOT + $R_Y$/$R_Z$ sequence that exploits the block-diagonal structure.
 
+### Squeezed vacuum
+
+When squeezing acts on a mode in vacuum (Blackbird `Squeezed`, or `Sgate` as the first operation on a mode), only the first column of $S(r, \varphi)$ matters:
+
+$$
+S(r, \varphi)\,|0\rangle = \cos\!\bigl(\tfrac{r}{\sqrt{2}}\bigr)\,|0\rangle - e^{i\varphi}\sin\!\bigl(\tfrac{r}{\sqrt{2}}\bigr)\,|2\rangle .
+$$
+
+In the binary encoding $|0\rangle = |00\rangle$ and $|2\rangle = |10\rangle$, so only the most significant qubit $w_0$ of the mode is affected, and the state is prepared by
+
+$$
+\text{PhaseShift}(\varphi)_{w_0}\; R_Y(-\sqrt{2}\,r)_{w_0}\; |00\rangle .
+$$
+
+This is implemented by `SqueezedVacuum` and avoids the two CNOTs of the general decomposition.
+
 ## Beam splitter — $\text{BS}(\theta, \phi)$
 
 ### Cutoff = 2

@@ -13,6 +13,7 @@ from gbs_compiler.operations import (
     Displacement,
     PhaseShift,
     Squeeze,
+    SqueezedVacuum,
     decompose_kronecker,
     matrix_to_U3,
 )
@@ -203,6 +204,26 @@ class TestSqueeze:
 
 
 # ---------------------------------------------------------------------------
+# SqueezedVacuum
+# ---------------------------------------------------------------------------
+
+class TestSqueezedVacuum:
+    @pytest.mark.parametrize("cutoff", [2, 4])
+    def test_state_matches_squeeze_column(self, cutoff):
+        r, phi = 0.5, 0.3
+        state = SqueezedVacuum(cutoff).numerical_state(r=r, phi=phi)
+        assert_allclose(state, Squeeze(cutoff).numerical_matrix(r=r, phi=phi)[:, 0], atol=1e-12)
+
+    @pytest.mark.parametrize("cutoff", [2, 4])
+    @pytest.mark.parametrize("r, phi", [(0.0, 0.0), (0.5, 0.3), (1.2, -2.0), (-0.7, np.pi / 4)])
+    def test_decomposition_prepares_state(self, cutoff, r, phi):
+        sv = SqueezedVacuum(cutoff)
+        gates = sv.gate_decomposition(r, phi, mode=0)
+        prepared = qml.matrix(gates, wire_order=range(sv.num_qubits_per_mode))[:, 0]
+        assert _is_close_up_to_global_phase(prepared, sv.numerical_state(r=r, phi=phi))
+
+
+# ---------------------------------------------------------------------------
 # BeamSplitter
 # ---------------------------------------------------------------------------
 
@@ -335,6 +356,40 @@ class TestCompilerGBS:
         comp = CompilerGBS(fock_cutoff=4)
         bb = _BB_HEADER + "Squeezed(0.3) | 0\n"
         assert "OPENQASM" in comp.compile_to_qasm(bb)
+
+    @pytest.mark.parametrize("gate", ["Sgate(0.3, 0.2)", "Squeezed(0.3, 0.2)"])
+    def test_squeeze_on_vacuum_uses_simplified_decomposition(self, gate):
+        comp = CompilerGBS(fock_cutoff=4)
+        bb = _BB_HEADER + f"{gate} | 0\n"
+        ops = list(comp.compile_to_pennylane(bb))
+        expected = list(SqueezedVacuum(4).gate_decomposition(r=0.3, phi=0.2, mode=0))
+        assert len(ops) == len(expected)
+        for op, exp in zip(ops, expected):
+            qml.assert_equal(op, exp)
+
+    def test_sgate_after_other_gate_uses_full_squeeze(self):
+        comp = CompilerGBS(fock_cutoff=4)
+        bb = _BB_HEADER + "Dgate(0.1) | 0\nSgate(0.3) | 0\n"
+        ops = list(comp.compile_to_pennylane(bb))
+        assert any(isinstance(op, qml.CNOT) for op in ops[-6:])
+        sq = list(Squeeze(4).gate_decomposition(r=0.3, phi=0.0, mode=0))
+        for op, exp in zip(ops[-len(sq):], sq):
+            qml.assert_equal(op, exp)
+
+    @pytest.mark.parametrize("prior", ["Dgate(0.1) | 0", "BSgate(0.4, 0.0) | (1, 0)"])
+    def test_squeezed_on_touched_mode_raises(self, prior):
+        comp = CompilerGBS(fock_cutoff=4)
+        bb = _BB_HEADER + f"{prior}\nSqueezed(0.3) | 0\n"
+        with pytest.raises(ValueError, match="first operation on mode 0"):
+            comp.compile_to_qasm(bb)
+
+    def test_sgate_after_beamsplitter_uses_full_squeeze(self):
+        comp = CompilerGBS(fock_cutoff=4)
+        bb = _BB_HEADER + "BSgate(0.4, 0.0) | (0, 1)\nSgate(0.3) | 1\n"
+        ops = list(comp.compile_to_pennylane(bb))
+        sq = list(Squeeze(4).gate_decomposition(r=0.3, phi=0.0, mode=1))
+        for op, exp in zip(ops[-len(sq):], sq):
+            qml.assert_equal(op, exp)
 
     def test_unsupported_op_lists_all_supported(self):
         comp = CompilerGBS(fock_cutoff=4)

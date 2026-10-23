@@ -13,6 +13,7 @@ quantum computers by encoding photon-number states in binary representation.
 | PhaseShift     | `Rgate(φ)`        | Phase-space rotation        |
 | Displacement   | `Dgate(r, φ)`     | Coherent-state displacement |
 | Squeeze        | `Sgate(r, φ)`     | Single-mode squeezing       |
+| SqueezedVacuum | `Squeezed(r, φ)`  | Squeezed vacuum preparation |
 | BeamSplitter   | `BSgate(θ, φ)`    | Beam splitter               |
 
 Each class exposes three representations:
@@ -64,6 +65,7 @@ __all__ = [
     "PhaseShift",
     "Displacement",
     "Squeeze",
+    "SqueezedVacuum",
     "BeamSplitter",
     "matrix_to_U3",
     "decompose_kronecker",
@@ -654,6 +656,112 @@ class Squeeze(CVOperation):
             qml.CNOT(wires[::-1]),
             qml.RY((theta + thetap) / 2, wires[0]),
             qml.RZ(phi - np.pi, wires[0]),
+        ])
+
+
+# ---------------------------------------------------------------------------
+# SqueezedVacuum  (Squeezed, or Sgate acting on vacuum)
+# ---------------------------------------------------------------------------
+
+class SqueezedVacuum(CVOperation):
+    r"""Squeezed vacuum state preparation $S(\xi)\,|0\rangle$ with $\xi = r\,e^{i\varphi}$.
+
+    Simplified version of :class:`Squeeze` valid **only** when the mode is
+    in vacuum.  Only the first column of $S(\xi)$ is reproduced, so the
+    resulting circuit is a state preparation, not the full squeezing unitary.
+
+    Corresponds to ``Squeezed`` in Blackbird, and to ``Sgate`` when it is the
+    first operation on its mode.
+
+    Parameters
+    ----------
+    fock_cutoff : int
+        Fock-space truncation (2 or 4).
+
+    Notes
+    -----
+    For ``cutoff=4`` the prepared state is
+
+    $$
+    \cos(r/\sqrt{2})\,|0\rangle - e^{i\varphi}\sin(r/\sqrt{2})\,|2\rangle,
+    $$
+
+    which in the binary encoding (MSB first) only acts on the first wire of
+    the mode.  For ``cutoff=2`` the state is the vacuum.
+
+    Examples
+    --------
+    >>> sv = SqueezedVacuum(fock_cutoff=4)
+    >>> sv.numerical_state(r=0.5, phi=0.0)
+    """
+
+    def symbolic_state(self, r: Symbol, phi: Symbol) -> Matrix:
+        """Symbolic Fock-basis state vector of the squeezed vacuum.
+
+        Parameters
+        ----------
+        r : sympy expression
+            Squeezing amplitude.
+        phi : sympy expression
+            Squeezing phase (radians).
+
+        Returns
+        -------
+        sympy.Matrix
+            Column vector, the first column of :meth:`Squeeze.symbolic_matrix`.
+        """
+        return Squeeze(self.fock_cutoff).symbolic_matrix(r, phi)[:, 0]
+
+    def numerical_state(self, r: float, phi: float) -> NDArray[np.complexfloating]:
+        """Numerical Fock-basis state vector of the squeezed vacuum.
+
+        Parameters
+        ----------
+        r : float
+            Squeezing amplitude.
+        phi : float
+            Squeezing phase (radians).
+
+        Returns
+        -------
+        numpy.ndarray
+            Complex 1-D array of length ``fock_cutoff``.
+        """
+        return np.array(self.symbolic_state(r, phi)).astype(np.complex128).flatten()
+
+    def gate_decomposition(self, r: float, phi: float, mode: int) -> QuantumScript:
+        r"""Decompose the squeezed vacuum preparation into qubit gates.
+
+        The circuit is correct only when the mode starts in vacuum
+        (all wires in $|0\rangle$).
+
+        Parameters
+        ----------
+        r : float
+            Squeezing amplitude.
+        phi : float
+            Squeezing phase (radians).
+        mode : int
+            Target optical mode.
+
+        Returns
+        -------
+        QuantumScript
+            Qubit circuit (global phase discarded).
+
+        Notes
+        -----
+        * ``cutoff=2`` — identity (no gates).
+        * ``cutoff=4`` — ``RY(-√2 r) · PhaseShift(φ)`` on the first (MSB) wire.
+        """
+        wires = self.map_mode_to_wires(mode)
+
+        if self.fock_cutoff == 2:
+            return QuantumScript([qml.Identity(wires=wires[0])])
+
+        return QuantumScript([
+            qml.RY(-np.sqrt(2) * r, wires[0]),
+            qml.PhaseShift(phi, wires[0]),
         ])
 
 
