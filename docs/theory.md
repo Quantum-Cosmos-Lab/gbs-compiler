@@ -124,6 +124,26 @@ If both input modes hold only even photon numbers $n_i \in \{0, 2\}$ (vacuum or 
 
 The final frame undo has to stay, because the output contains odd photon numbers (e.g. $|1,1\rangle$). This reduces the core from 28 to 12 two-qubit gates. `BeamSplitter.gate_decomposition(..., even_input=True)` returns this circuit, and `CompilerGBS` uses it automatically for beam splitters whose inputs are known to be even (typically the first beam-splitter layer of a GBS circuit).
 
+#### At most three photons
+
+In many applications the total number of photons is small. If at most three photons meet at a beam splitter, it acts only on states with $n = n_1 + n_2 \le 3$. These blocks fit completely inside the $N = 4$ truncation, so the truncated generator is exact on them, and the circuit only has to reproduce $\hat U_{BS}$ on the ten states with $n \le 3$. Any unitary that agrees with $e^{\hat A}$ on $\mathcal H_{\le 3}$ maps the six remaining states ($n = 4, 5, 6$) among themselves, and how it acts on them is a free choice.
+
+The useful freedom lies in the block $n = 4$. The truncated generator rotates it with frequency $2\sqrt{3}\,\theta$, while the block $n = 2$ rotates with $2\theta$; this mismatch is why $V_\text{even}$ needs two uniformly controlled rotations with angles $\xi_\pm$. Rotating the block $n = 4$ with $2\theta$ as well gives both even sectors the same rate $-2\theta$, with unchanged rotation axes. Each uniformly controlled rotation then reduces to $R_y(-2\theta)$ open-controlled by $q_1$:
+
+$$
+\overline{C}_{q_1} R_y(\varphi) = CX_{q_1}\, R_y(\varphi/2)\, CX_{q_1}\, R_y(\varphi/2).
+$$
+
+The frames, $M$, $V_\text{odd}$ and the frame switch are unchanged. The resulting circuit agrees with $e^{\hat A}$ on every input with $n \le 3$ for all $\theta$ (and for $\phi \neq 0$ after conjugation with the phase shift). It uses 24 two-qubit gates (18 CNOT, 6 controlled-$Y$) and 32 single-qubit gates. Combined with squeezed-vacuum inputs ($q_1 = 0$), the open controls are always satisfied and the rotations become plain $R_y(-2\theta)$, leaving 8 two-qubit gates.
+
+The remaining parts cannot be simplified by the same argument:
+
+- In $V_\text{odd}$ the only freedom is the frequency of the block $n = 5$. The choice $3\theta$ already gives equal rates in both odd sectors, but their axes differ, so the controlled-$Y$ reflections remain.
+- The frame switch is still required: the only CNOT-computable parity that is constant on $\{n = 0\} \cup \{n = 2\}$ is $n \bmod 2$, so the block $n = 2$ cannot share a sector with $|0,0\rangle$.
+- The controlled-$Y$ reflection in $V_\text{even}$ is still necessary: every rotation of sector $00$ that leaves $|0,0\rangle$ invariant has, in the magic basis, a $q_2$ axis perpendicular to the $q_2$ axis of sector $10$.
+
+`BeamSplitter.gate_decomposition(..., low_photon=True)` returns this circuit and `CompilerGBS(fock_cutoff=4, low_photon_bs=True)` uses it for every beam splitter. If more than three photons can meet at a beam splitter, the blocks $n \ge 4$ matter and the full circuit should be used (which itself follows the truncated generator there, not the ideal beam splitter).
+
 ## Compilation pipeline
 
 ```

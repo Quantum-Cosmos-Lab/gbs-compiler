@@ -907,6 +907,7 @@ class BeamSplitter(CVOperation):
         phi: float,
         modes: tuple[int, int],
         even_input: bool = False,
+        low_photon: bool = False,
     ) -> QuantumScript:
         """Decompose arbitrary beam splitter into qubit gates.
 
@@ -923,19 +924,25 @@ class BeamSplitter(CVOperation):
             correct **only** when both input modes have photon numbers in
             {0, 2}, i.e. both LSB qubits are in |0⟩ (e.g. squeezed vacuum).
             Ignored for ``cutoff=2``.
+        low_photon : bool
+            If ``True`` (``cutoff=4`` only), return an approximate circuit
+            that is exact **only** on inputs with ``n1 + n2 <= 3``; on the
+            ``n = 4`` block it rotates with frequency ``2θ`` instead of
+            ``2√3 θ``.  Use only when at most three photons can meet at the
+            beam splitter.  Ignored for ``cutoff=2``.
 
         Returns
         -------
         QuantumScript
             Qubit circuit implementing ``BS(θ, φ)`` (restricted to even
-            inputs if *even_input*).
+            inputs if *even_input*, and to ``n <= 3`` if *low_photon*).
 
         Notes
         -----
         * ``cutoff=2`` — Hadamard + CNOT + RY sequence (6 gates).
         * ``cutoff=4`` — parity-sector decomposition, see
-          :meth:`_gate_decomposition_cutoff4` (28 two-qubit gates, 12 with
-          *even_input*).
+          :meth:`_gate_decomposition_cutoff4` (28 two-qubit gates; 24 with
+          *low_photon*, 12 with *even_input*, 8 with both).
         """
         wires = self.map_mode_to_wires(modes[0]) + self.map_mode_to_wires(modes[1])
         U = PhaseShift(fock_cutoff=self.fock_cutoff)
@@ -971,7 +978,9 @@ class BeamSplitter(CVOperation):
         # ):
         #     all_gates.extend(list(layer(theta, modes)))
 
-        all_gates.extend(list(self._gate_decomposition_cutoff4(theta, modes, even_input)))
+        all_gates.extend(list(self._gate_decomposition_cutoff4(
+            theta, modes, even_input, low_photon
+        )))
 
         all_gates.extend(list(U.gate_decomposition(phi, modes[0]).adjoint()))
         return QuantumScript(all_gates)
@@ -1126,7 +1135,11 @@ class BeamSplitter(CVOperation):
         ])
 
     def _gate_decomposition_cutoff4(
-        self, theta: float, modes: tuple[int, int], even_input: bool = False
+        self,
+        theta: float,
+        modes: tuple[int, int],
+        even_input: bool = False,
+        low_photon: bool = False,
     ) -> QuantumScript:
         r"""Real part ``BS_real(theta)`` of the cutoff-4 beam splitter.
 
@@ -1141,6 +1154,12 @@ class BeamSplitter(CVOperation):
         input (photon numbers in {0, 2}); ``w1`` then stays |0⟩ until the
         final undo, so every gate controlled by ``w1`` or ``w3`` before it is
         the identity and the whole ``V_odd`` block cancels.
+
+        With *low_photon* only inputs with ``n <= 3`` are reproduced exactly.
+        The ``n = 4`` block is then rotated with ``2θ`` (instead of ``2√3 θ``),
+        so both even sectors ``00`` and ``10`` share the rate ``-2θ`` and each
+        uniformly controlled rotation in ``V_even`` reduces to ``RY(-2θ)``
+        open-controlled by ``w1`` (plain ``RY`` if also *even_input*).
         """
         w = self.map_mode_to_wires(modes[0]) + self.map_mode_to_wires(modes[1])
         q0, q1, q2, q3 = w
@@ -1168,6 +1187,13 @@ class BeamSplitter(CVOperation):
                       qml.RY(xi_p, wires=target), qml.CNOT(wires=[q0, target]),
                       qml.RY(xi_m, wires=target), qml.CNOT(wires=[q1, target]),
                       qml.RY(xi_m, wires=target), qml.CNOT(wires=[q0, target])])
+
+        def ocry(phi, target):  # RY(phi) if q1 = 0, I if q1 = 1 (2 CNOTs)
+            if even_input:  # q1 = 0: the control is always satisfied
+                g.append(qml.RY(phi, wires=target))
+                return
+            g.extend([qml.RY(phi / 2, wires=target), qml.CNOT(wires=[q1, target]),
+                      qml.RY(phi / 2, wires=target), qml.CNOT(wires=[q1, target])])
 
         if even_input:
             # q3 = 0: CX(q3->q1) and CX(q3->q0) are identities; q1 = 0: V_odd
@@ -1200,8 +1226,13 @@ class BeamSplitter(CVOperation):
         xi_m = -(s3 - 1) * theta / 2
         g.append(qml.CY(wires=[q0, q2]))
         g.extend([qml.RX(-pi / 4, wires=q2), qml.RX(pi / 4, wires=q3)])
-        ucry(xi_p, xi_m, q2)
-        ucry(xi_p, xi_m, q3)
+        if low_photon:
+            # n = 4 rotated with 2θ: both even sectors share one rate
+            ocry(-2 * theta, q2)
+            ocry(-2 * theta, q3)
+        else:
+            ucry(xi_p, xi_m, q2)
+            ucry(xi_p, xi_m, q3)
         g.extend([qml.RX(pi / 4, wires=q2), qml.RX(-pi / 4, wires=q3)])
         g.append(qml.CY(wires=[q0, q2]))
         magic_dag()

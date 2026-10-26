@@ -50,10 +50,17 @@ class CompilerGBS:
     fock_cutoff : int
         Photon-number truncation.  Must be **2** (1 qubit/mode) or **4**
         (2 qubits/mode).
+    low_photon_bs : bool
+        If ``True`` (cutoff 4 only), compile every ``BSgate`` with the
+        approximate ``low_photon`` decomposition (24 instead of 28 two-qubit
+        gates, 8 on squeezed-vacuum inputs).  It is exact only if at most
+        three photons meet at any beam splitter; otherwise the result is an
+        approximation.  No effect at cutoff 2.
 
     Attributes
     ----------
     fock_cutoff : int
+    low_photon_bs : bool
     num_qubits_per_mode : int
         Qubits per optical mode (``ceil(log2(fock_cutoff))``).
 
@@ -86,8 +93,9 @@ class CompilerGBS:
         On encountering an unsupported Blackbird operation.
     """
 
-    def __init__(self, fock_cutoff: int) -> None:
+    def __init__(self, fock_cutoff: int, low_photon_bs: bool = False) -> None:
         self.fock_cutoff = fock_cutoff
+        self.low_photon_bs = low_photon_bs
         self.num_qubits_per_mode = CVOperation(fock_cutoff).num_qubits_per_mode
 
     # ------------------------------------------------------------------
@@ -251,7 +259,8 @@ class CompilerGBS:
         return BeamSplitter(self.fock_cutoff).gate_decomposition(
             theta=theta,
             phi=phi,
-            modes=tuple(op["modes"])
+            modes=tuple(op["modes"]),
+            low_photon=self.low_photon_bs,
         )
 
     def _compile_bsgate_even_input(self, op: dict[str, Any]) -> QuantumScript:
@@ -261,6 +270,7 @@ class CompilerGBS:
             phi=phi,
             modes=tuple(op["modes"]),
             even_input=True,
+            low_photon=self.low_photon_bs,
         )
 
     _OP_DISPATCH = {

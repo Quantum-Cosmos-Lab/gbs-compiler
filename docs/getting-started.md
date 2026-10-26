@@ -97,6 +97,18 @@ The output is standard OpenQASM 2.0 that can be fed to any compatible backend (Q
 !!! tip
     Start with `fock_cutoff=4` for realistic simulations.  Use `cutoff=2` only for quick tests or when qubit budgets and depth of circuits are extremely tight.
 
+### Low-photon beam splitters
+
+If at most three photons can meet at any beam splitter, a cheaper beam-splitter circuit can be used at cutoff 4 (24 instead of 28 two-qubit gates, 8 on squeezed-vacuum inputs):
+
+```python
+compiler = CompilerGBS(fock_cutoff=4, low_photon_bs=True)
+qasm = compiler.compile_to_qasm(bb_circuit)
+```
+
+!!! warning
+    The circuit is exact only on inputs with $n_1 + n_2 \le 3$. On the $n = 4$ block it rotates with frequency $2\theta$ instead of $2\sqrt{3}\,\theta$, so with more photons it is an approximation.
+
 ## Using individual operations
 
 You don't have to go through the full compiler pipeline.  Each CV operation can be used directly:
