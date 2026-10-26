@@ -259,6 +259,36 @@ class TestBeamSplitter:
         # assert _is_close_up_to_global_phase(M_reconstructed, M_expected, atol=1e-10)
         assert_allclose(M_reconstructed, M_expected, atol=1e-10)
 
+    # |a, b> with a, b in {0, 2}: both LSB qubits are 0 (wires a_msb a_lsb b_msb b_lsb)
+    EVEN_COLUMNS = [0b0000, 0b0010, 0b1000, 0b1010]
+
+    @pytest.mark.parametrize(
+        "theta, phi", [(0.3, 0.0), (np.pi / 4, 0.7), (1.1, -0.4), (np.pi / 3, np.pi / 6)]
+    )
+    def test_even_input_decomposition(self, theta, phi):
+        bs = BeamSplitter(4)
+        gates = bs.gate_decomposition(theta=theta, phi=phi, modes=(0, 1), even_input=True)
+        M_reconstructed = qml.matrix(gates, wire_order=range(4))[:, self.EVEN_COLUMNS]
+        M_expected = bs.numerical_matrix(theta=theta, phi=phi)[:, self.EVEN_COLUMNS]
+        # one common global phase for all even input columns
+        assert _is_close_up_to_global_phase(M_reconstructed, M_expected, atol=1e-10)
+
+    def test_even_input_has_fewer_gates(self):
+        bs = BeamSplitter(4)
+
+        def two_qubit_count(script):
+            return sum(len(op.wires) > 1 for op in script.operations)
+
+        full = bs.gate_decomposition(theta=0.5, phi=0.2, modes=(0, 1))
+        reduced = bs.gate_decomposition(theta=0.5, phi=0.2, modes=(0, 1), even_input=True)
+        assert two_qubit_count(reduced) < two_qubit_count(full)
+
+    def test_even_input_ignored_for_cutoff2(self):
+        bs = BeamSplitter(2)
+        full = bs.gate_decomposition(theta=0.5, phi=0.2, modes=(0, 1))
+        reduced = bs.gate_decomposition(theta=0.5, phi=0.2, modes=(0, 1), even_input=True)
+        qml.assert_equal(full, reduced)
+
 # ---------------------------------------------------------------------------
 # Utility functions
 # ---------------------------------------------------------------------------
@@ -417,6 +447,60 @@ class TestCompilerGBS:
         dev = qml.device("default.qubit", wires=2, seed=1)
         samples = qml.QNode(circ, dev, shots=10)()
         assert comp.binary_to_photon_meas(samples).shape == (10, 2)
+
+    @staticmethod
+    def _ends_with_bs(ops, even_input, theta=0.4, phi=0.2, modes=(0, 1)):
+        bs = BeamSplitter(4).gate_decomposition(theta, phi, modes, even_input=even_input)
+        expected = [op for op in bs.operations if not CompilerGBS._is_identity(op)]
+        tail = ops[-len(expected):]
+        return len(tail) == len(expected) and all(
+            qml.equal(op, exp) for op, exp in zip(tail, expected)
+        )
+
+    @pytest.mark.parametrize(
+        "prefix",
+        [
+            "Sgate(0.3) | 0\nSgate(0.5, 0.1) | 1\n",
+            "Squeezed(0.3) | 0\n",  # mode 1 stays in vacuum
+            "Sgate(0.3) | 0\nSgate(0.5) | 1\nRgate(0.7) | 0\n",
+        ],
+    )
+    def test_bsgate_on_even_inputs_is_reduced(self, prefix):
+        comp = CompilerGBS(fock_cutoff=4)
+        bb = _BB_HEADER + prefix + "BSgate(0.4, 0.2) | (0, 1)\n"
+        ops = list(comp.compile_to_pennylane(bb))
+        assert self._ends_with_bs(ops, even_input=True)
+
+    @pytest.mark.parametrize(
+        "prefix",
+        [
+            "Sgate(0.3) | 0\nDgate(0.1) | 1\n",
+            "Sgate(0.3) | 0\nSgate(0.2) | 0\n",  # second Sgate is the full Squeeze
+            "Sgate(0.3) | 0\nBSgate(0.1, 0.0) | (0, 1)\n",  # modes already mixed
+        ],
+    )
+    def test_bsgate_on_general_inputs_is_full(self, prefix):
+        comp = CompilerGBS(fock_cutoff=4)
+        bb = _BB_HEADER + prefix + "BSgate(0.4, 0.2) | (0, 1)\n"
+        ops = list(comp.compile_to_pennylane(bb))
+        assert self._ends_with_bs(ops, even_input=False)
+
+    def test_end_to_end_squeezed_beamsplitter_statistics(self):
+        """Reduced BS on squeezed vacua reproduces the joint photon statistics."""
+        comp = CompilerGBS(fock_cutoff=4)
+        bb = _BB_HEADER + "Sgate(0.8) | 0\nSgate(0.5) | 1\nBSgate(0.4, 0.2) | (0, 1)\n"
+        qasm = comp.compile_to_qasm(bb)
+        circ = qml.from_qasm(qasm, measurements=qml.sample())
+        dev = qml.device("default.qubit", wires=comp.required_qubits_num(bb), seed=1234)
+        samples = qml.QNode(circ, dev, shots=20_000)()
+
+        photons = comp.binary_to_photon_meas(samples)
+        observed = np.bincount(4 * photons[:, 0] + photons[:, 1], minlength=16) / len(photons)
+        sv = SqueezedVacuum(4)
+        psi_in = np.kron(sv.numerical_state(r=0.8, phi=0.0), sv.numerical_state(r=0.5, phi=0.0))
+        expected = np.abs(BeamSplitter(4).numerical_matrix(theta=0.4, phi=0.2) @ psi_in) ** 2
+
+        assert_allclose(observed, expected, atol=0.02)
 
     def test_unsupported_op_lists_all_supported(self):
         comp = CompilerGBS(fock_cutoff=4)

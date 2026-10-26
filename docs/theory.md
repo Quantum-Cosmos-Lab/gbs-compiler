@@ -114,6 +114,16 @@ The two-mode Fock space has dimension 4 ($|00\rangle, |01\rangle, |10\rangle, |1
 
 The $N=4$ beam splitter is decomposed by grouping its photon-number blocks by the parity of $n = n_1 + n_2$. A few CNOTs map each parity onto two sector qubits and a two-qubit register. Because every sector gate is a real $SO(4)$ rotation, in the magic basis it becomes a product of single-qubit rotations with angles linear in $\theta$, implemented by controlled-$Y$ reflections and (uniformly) controlled $R_y$ gates.
 
+#### Squeezed-vacuum inputs
+
+If both input modes hold only even photon numbers $n_i \in \{0, 2\}$ (vacuum or squeezed vacuum, possibly followed by phase rotations), both least significant qubits $q_1, q_3$ are $|0\rangle$. Then $q_1$ stays $|0\rangle$ until the final frame undo, so:
+
+- the frame CNOTs controlled by $q_3$ before the sector gates are identities,
+- the whole odd-parity block $V_\text{odd}$ is the identity (its rotations are controlled by $q_1$, the remaining $R_x$/CY gates cancel in pairs), together with the magic-basis changes around it,
+- the uniformly controlled $R_y$ gates of $V_\text{even}$ lose their $q_1$-controlled CNOTs.
+
+The final frame undo has to stay, because the output contains odd photon numbers (e.g. $|1,1\rangle$). This reduces the core from 28 to 12 two-qubit gates. `BeamSplitter.gate_decomposition(..., even_input=True)` returns this circuit, and `CompilerGBS` uses it automatically for beam splitters whose inputs are known to be even (typically the first beam-splitter layer of a GBS circuit).
+
 ## Compilation pipeline
 
 ```

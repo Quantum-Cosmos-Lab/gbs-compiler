@@ -72,7 +72,10 @@ class CompilerGBS:
         Phase rotation.
     ``BSgate(θ, φ)``
         Beam splitter with arbitrary angles (defaults ``θ = π/4``,
-        ``φ = 0``, i.e. 50:50).
+        ``φ = 0``, i.e. 50:50).  At cutoff 4, when both input modes hold
+        only even photon numbers (vacuum or squeezed vacuum, possibly
+        followed by ``Rgate``), the reduced ``even_input`` decomposition is
+        used.
 
     Raises
     ------
@@ -251,6 +254,15 @@ class CompilerGBS:
             modes=tuple(op["modes"])
         )
 
+    def _compile_bsgate_even_input(self, op: dict[str, Any]) -> QuantumScript:
+        theta, phi = self._parse_operation_args_theta_phi(op)
+        return BeamSplitter(self.fock_cutoff).gate_decomposition(
+            theta=theta,
+            phi=phi,
+            modes=tuple(op["modes"]),
+            even_input=True,
+        )
+
     _OP_DISPATCH = {
         "Squeezed": "_compile_squeezed_vacuum",
         "Sgate": "_compile_sgate",
@@ -264,6 +276,7 @@ class CompilerGBS:
         program = bb.loads(bb_circuit)
         gates: list = []
         touched_modes: set[int] = set()  # modes no longer guaranteed to be in vacuum
+        odd_modes: set[int] = set()  # modes that may hold odd photon numbers (LSB != 0)
 
         for op in program.operations:
             name = op["op"]
@@ -281,9 +294,18 @@ class CompilerGBS:
                 )
             if name == "Sgate" and op["modes"][0] not in touched_modes:
                 method_name = "_compile_squeezed_vacuum"
+            if (
+                name == "BSgate"
+                and self.fock_cutoff == 4
+                and not odd_modes.intersection(op["modes"])
+            ):
+                method_name = "_compile_bsgate_even_input"
 
             gates.extend(list(getattr(self, method_name)(op)))
             touched_modes.update(op["modes"])
+            # squeezed vacuum and Rgate keep photon numbers in {0, 2}
+            if method_name not in ("_compile_squeezed_vacuum", "_compile_rgate"):
+                odd_modes.update(op["modes"])
 
         return QuantumScript(ops=[g for g in gates if not self._is_identity(g)])
 

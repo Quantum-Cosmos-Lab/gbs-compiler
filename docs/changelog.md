@@ -62,3 +62,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `CompilerGBS` compiles `Squeezed`, and `Sgate` applied as the first operation on a mode, with `SqueezedVacuum` instead of the full `Squeeze` decomposition.
 - `CompilerGBS` raises `ValueError` when `Squeezed` is applied to a mode that was already acted on (previously it silently applied the full `Squeeze` gate).
 - `CompilerGBS` removes identity gates (e.g. `rz(0.0)`, `u1(0.0)`, `id`) from the compiled circuit, and the OpenQASM register always covers all modes.
+- `BeamSplitter.gate_decomposition` accepts `even_input=True` (cutoff 4): a reduced circuit (12 instead of 28 two-qubit gates) valid when both input modes have photon numbers in {0, 2}. `CompilerGBS` uses it for beam splitters acting on (squeezed) vacuum modes, optionally after `Rgate`.
+- New example `examples/example_gbs.xbb`: pure GBS circuit (squeezed vacua + beam-splitter network).
