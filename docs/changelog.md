@@ -51,7 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Tests for cutoff at CompilerGBS construction, for supported operations and for end-to-end photon statistics.
 
-## [Unreleased]
+## [0.2.4]
 
 ### Added
 
