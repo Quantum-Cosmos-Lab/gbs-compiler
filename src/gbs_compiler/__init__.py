@@ -41,6 +41,7 @@ from gbs_compiler.operations import (
     Displacement,
     PhaseShift,
     Squeeze,
+    SqueezedVacuum,
     decompose_kronecker,
     matrix_to_U3,
 )
@@ -51,6 +52,7 @@ __all__ = [
     "PhaseShift",
     "Displacement",
     "Squeeze",
+    "SqueezedVacuum",
     "BeamSplitter",
     "matrix_to_U3",
     "decompose_kronecker",

@@ -13,6 +13,7 @@ quantum computers by encoding photon-number states in binary representation.
 | PhaseShift     | `Rgate(φ)`        | Phase-space rotation        |
 | Displacement   | `Dgate(r, φ)`     | Coherent-state displacement |
 | Squeeze        | `Sgate(r, φ)`     | Single-mode squeezing       |
+| SqueezedVacuum | `Squeezed(r, φ)`  | Squeezed vacuum preparation |
 | BeamSplitter   | `BSgate(θ, φ)`    | Beam splitter               |
 
 Each class exposes three representations:
@@ -64,6 +65,7 @@ __all__ = [
     "PhaseShift",
     "Displacement",
     "Squeeze",
+    "SqueezedVacuum",
     "BeamSplitter",
     "matrix_to_U3",
     "decompose_kronecker",
@@ -658,6 +660,112 @@ class Squeeze(CVOperation):
 
 
 # ---------------------------------------------------------------------------
+# SqueezedVacuum  (Squeezed, or Sgate acting on vacuum)
+# ---------------------------------------------------------------------------
+
+class SqueezedVacuum(CVOperation):
+    r"""Squeezed vacuum state preparation $S(\xi)\,|0\rangle$ with $\xi = r\,e^{i\varphi}$.
+
+    Simplified version of :class:`Squeeze` valid **only** when the mode is
+    in vacuum.  Only the first column of $S(\xi)$ is reproduced, so the
+    resulting circuit is a state preparation, not the full squeezing unitary.
+
+    Corresponds to ``Squeezed`` in Blackbird, and to ``Sgate`` when it is the
+    first operation on its mode.
+
+    Parameters
+    ----------
+    fock_cutoff : int
+        Fock-space truncation (2 or 4).
+
+    Notes
+    -----
+    For ``cutoff=4`` the prepared state is
+
+    $$
+    \cos(r/\sqrt{2})\,|0\rangle - e^{i\varphi}\sin(r/\sqrt{2})\,|2\rangle,
+    $$
+
+    which in the binary encoding (MSB first) only acts on the first wire of
+    the mode.  For ``cutoff=2`` the state is the vacuum.
+
+    Examples
+    --------
+    >>> sv = SqueezedVacuum(fock_cutoff=4)
+    >>> sv.numerical_state(r=0.5, phi=0.0)
+    """
+
+    def symbolic_state(self, r: Symbol, phi: Symbol) -> Matrix:
+        """Symbolic Fock-basis state vector of the squeezed vacuum.
+
+        Parameters
+        ----------
+        r : sympy expression
+            Squeezing amplitude.
+        phi : sympy expression
+            Squeezing phase (radians).
+
+        Returns
+        -------
+        sympy.Matrix
+            Column vector, the first column of :meth:`Squeeze.symbolic_matrix`.
+        """
+        return Squeeze(self.fock_cutoff).symbolic_matrix(r, phi)[:, 0]
+
+    def numerical_state(self, r: float, phi: float) -> NDArray[np.complexfloating]:
+        """Numerical Fock-basis state vector of the squeezed vacuum.
+
+        Parameters
+        ----------
+        r : float
+            Squeezing amplitude.
+        phi : float
+            Squeezing phase (radians).
+
+        Returns
+        -------
+        numpy.ndarray
+            Complex 1-D array of length ``fock_cutoff``.
+        """
+        return np.array(self.symbolic_state(r, phi)).astype(np.complex128).flatten()
+
+    def gate_decomposition(self, r: float, phi: float, mode: int) -> QuantumScript:
+        r"""Decompose the squeezed vacuum preparation into qubit gates.
+
+        The circuit is correct only when the mode starts in vacuum
+        (all wires in $|0\rangle$).
+
+        Parameters
+        ----------
+        r : float
+            Squeezing amplitude.
+        phi : float
+            Squeezing phase (radians).
+        mode : int
+            Target optical mode.
+
+        Returns
+        -------
+        QuantumScript
+            Qubit circuit (global phase discarded).
+
+        Notes
+        -----
+        * ``cutoff=2`` — identity (no gates).
+        * ``cutoff=4`` — ``RY(-√2 r) · PhaseShift(φ)`` on the first (MSB) wire.
+        """
+        wires = self.map_mode_to_wires(mode)
+
+        if self.fock_cutoff == 2:
+            return QuantumScript([qml.Identity(wires=wires[0])])
+
+        return QuantumScript([
+            qml.RY(-np.sqrt(2) * r, wires[0]),
+            qml.PhaseShift(phi, wires[0]),
+        ])
+
+
+# ---------------------------------------------------------------------------
 # BeamSplitter  (BSgate)
 # ---------------------------------------------------------------------------
 
@@ -793,7 +901,14 @@ class BeamSplitter(CVOperation):
         """
         return np.array(self.symbolic_matrix(theta, phi)).astype(np.complex128)
 
-    def gate_decomposition(self, theta: float, phi: float, modes: tuple[int, int]) -> QuantumScript:
+    def gate_decomposition(
+        self,
+        theta: float,
+        phi: float,
+        modes: tuple[int, int],
+        even_input: bool = False,
+        low_photon: bool = False,
+    ) -> QuantumScript:
         """Decompose arbitrary beam splitter into qubit gates.
 
         Parameters
@@ -804,17 +919,30 @@ class BeamSplitter(CVOperation):
             Phase shift parameter.
         modes : tuple[int, int]
             Pair of optical mode indices ``(mode_a, mode_b)``.
+        even_input : bool
+            If ``True`` (``cutoff=4`` only), return a reduced circuit that is
+            correct **only** when both input modes have photon numbers in
+            {0, 2}, i.e. both LSB qubits are in |0⟩ (e.g. squeezed vacuum).
+            Ignored for ``cutoff=2``.
+        low_photon : bool
+            If ``True`` (``cutoff=4`` only), return an approximate circuit
+            that is exact **only** on inputs with ``n1 + n2 <= 3``; on the
+            ``n = 4`` block it rotates with frequency ``2θ`` instead of
+            ``2√3 θ``.  Use only when at most three photons can meet at the
+            beam splitter.  Ignored for ``cutoff=2``.
 
         Returns
         -------
         QuantumScript
-            Qubit circuit implementing ``BS(θ, φ)``.
+            Qubit circuit implementing ``BS(θ, φ)`` (restricted to even
+            inputs if *even_input*, and to ``n <= 3`` if *low_photon*).
 
         Notes
         -----
         * ``cutoff=2`` — Hadamard + CNOT + RY sequence (6 gates).
-        * ``cutoff=4`` — product of five unitary layers ``U1 · U2 · U3 · U4 · U5``,
-          each implemented with multi-controlled rotations and CNOTs.
+        * ``cutoff=4`` — parity-sector decomposition, see
+          :meth:`_gate_decomposition_cutoff4` (28 two-qubit gates; 24 with
+          *low_photon*, 12 with *even_input*, 8 with both).
         """
         wires = self.map_mode_to_wires(modes[0]) + self.map_mode_to_wires(modes[1])
         U = PhaseShift(fock_cutoff=self.fock_cutoff)
@@ -850,7 +978,9 @@ class BeamSplitter(CVOperation):
         # ):
         #     all_gates.extend(list(layer(theta, modes)))
 
-        all_gates.extend(list(self._gate_decomposition_cutoff4(theta, modes)))
+        all_gates.extend(list(self._gate_decomposition_cutoff4(
+            theta, modes, even_input, low_photon
+        )))
 
         all_gates.extend(list(U.gate_decomposition(phi, modes[0]).adjoint()))
         return QuantumScript(all_gates)
@@ -1004,7 +1134,13 @@ class BeamSplitter(CVOperation):
             qml.CNOT(wires=[w[1], w[3]]),
         ])
 
-    def _gate_decomposition_cutoff4(self, theta: float, modes: tuple[int, int]) -> QuantumScript:
+    def _gate_decomposition_cutoff4(
+        self,
+        theta: float,
+        modes: tuple[int, int],
+        even_input: bool = False,
+        low_photon: bool = False,
+    ) -> QuantumScript:
         r"""Real part ``BS_real(theta)`` of the cutoff-4 beam splitter.
 
         Wires ``w = [a_msb, a_lsb, b_msb, b_lsb]``. After
@@ -1013,6 +1149,17 @@ class BeamSplitter(CVOperation):
         ``CX(w3->w0)`` gives ``00 = {n=0, n=4}`` and ``10 = {n=2, n=6}``
         (even ``n``). In every sector the gate acts on ``(w2, w3)`` as an SO(4)
         matrix, i.e. as single-qubit rotations in the magic basis ``M``.
+
+        With *even_input* both LSBs ``w1``, ``w3`` are assumed to be |0⟩ on
+        input (photon numbers in {0, 2}); ``w1`` then stays |0⟩ until the
+        final undo, so every gate controlled by ``w1`` or ``w3`` before it is
+        the identity and the whole ``V_odd`` block cancels.
+
+        With *low_photon* only inputs with ``n <= 3`` are reproduced exactly.
+        The ``n = 4`` block is then rotated with ``2θ`` (instead of ``2√3 θ``),
+        so both even sectors ``00`` and ``10`` share the rate ``-2θ`` and each
+        uniformly controlled rotation in ``V_even`` reduces to ``RY(-2θ)``
+        open-controlled by ``w1`` (plain ``RY`` if also *even_input*).
         """
         w = self.map_mode_to_wires(modes[0]) + self.map_mode_to_wires(modes[1])
         q0, q1, q2, q3 = w
@@ -1032,41 +1179,64 @@ class BeamSplitter(CVOperation):
 
         def ucry(xi_p, xi_m, target):
             # RY(2(xi_p+xi_m)) on (q0,q1)=00, RY(2(xi_p-xi_m)) on 10, I if q1=1
+            if even_input:  # q1 = 0: CNOT(q1 -> target) are identities
+                g.extend([qml.RY(2 * xi_p, wires=target), qml.CNOT(wires=[q0, target]),
+                          qml.RY(2 * xi_m, wires=target), qml.CNOT(wires=[q0, target])])
+                return
             g.extend([qml.RY(xi_p, wires=target), qml.CNOT(wires=[q1, target]),
                       qml.RY(xi_p, wires=target), qml.CNOT(wires=[q0, target]),
                       qml.RY(xi_m, wires=target), qml.CNOT(wires=[q1, target]),
                       qml.RY(xi_m, wires=target), qml.CNOT(wires=[q0, target])])
 
-        # odd-parity frame
-        g.extend([qml.CNOT(wires=[q2, q0]), qml.CNOT(wires=[q3, q1])])
-        magic()
+        def ocry(phi, target):  # RY(phi) if q1 = 0, I if q1 = 1 (2 CNOTs)
+            if even_input:  # q1 = 0: the control is always satisfied
+                g.append(qml.RY(phi, wires=target))
+                return
+            g.extend([qml.RY(phi / 2, wires=target), qml.CNOT(wires=[q1, target]),
+                      qml.RY(phi / 2, wires=target), qml.CNOT(wires=[q1, target])])
 
-        # V_odd: n = 1, 3, 5 (active for q1 = 1)
-        g.extend([qml.RX(-pi / 4, wires=q2), qml.RX(5 * pi / 12, wires=q3)])
-        g.extend([qml.CY(wires=[q0, q2]), qml.CY(wires=[q0, q3])])
-        g.extend([qml.RX(-pi / 4, wires=q2), qml.RX(pi / 12, wires=q3)])
-        cry(-2 * theta, q1, q2)
-        cry(-4 * theta, q1, q3)
-        g.extend([qml.RX(pi / 4, wires=q2), qml.RX(-pi / 12, wires=q3)])
-        g.extend([qml.CY(wires=[q0, q2]), qml.CY(wires=[q0, q3])])
-        g.extend([qml.RX(pi / 4, wires=q2), qml.RX(-5 * pi / 12, wires=q3)])
+        if even_input:
+            # q3 = 0: CX(q3->q1) and CX(q3->q0) are identities; q1 = 0: V_odd
+            # (cry controlled by q1, remaining RX/CY cancel pairwise) is the
+            # identity, so magic . V_odd . magic_dag drops out entirely.
+            g.append(qml.CNOT(wires=[q2, q0]))
+            magic()
+        else:
+            # odd-parity frame
+            g.extend([qml.CNOT(wires=[q2, q0]), qml.CNOT(wires=[q3, q1])])
+            magic()
 
-        # switch to the even-parity frame
-        magic_dag()
-        g.append(qml.CNOT(wires=[q3, q0]))
-        magic()
+            # V_odd: n = 1, 3, 5 (active for q1 = 1)
+            g.extend([qml.RX(-pi / 4, wires=q2), qml.RX(5 * pi / 12, wires=q3)])
+            g.extend([qml.CY(wires=[q0, q2]), qml.CY(wires=[q0, q3])])
+            g.extend([qml.RX(-pi / 4, wires=q2), qml.RX(pi / 12, wires=q3)])
+            cry(-2 * theta, q1, q2)
+            cry(-4 * theta, q1, q3)
+            g.extend([qml.RX(pi / 4, wires=q2), qml.RX(-pi / 12, wires=q3)])
+            g.extend([qml.CY(wires=[q0, q2]), qml.CY(wires=[q0, q3])])
+            g.extend([qml.RX(pi / 4, wires=q2), qml.RX(-5 * pi / 12, wires=q3)])
+
+            # switch to the even-parity frame
+            magic_dag()
+            g.append(qml.CNOT(wires=[q3, q0]))
+            magic()
 
         # V_even: n = 0, 2, 4, 6 (active for q1 = 0)
         xi_p = -(s3 + 1) * theta / 2
         xi_m = -(s3 - 1) * theta / 2
         g.append(qml.CY(wires=[q0, q2]))
         g.extend([qml.RX(-pi / 4, wires=q2), qml.RX(pi / 4, wires=q3)])
-        ucry(xi_p, xi_m, q2)
-        ucry(xi_p, xi_m, q3)
+        if low_photon:
+            # n = 4 rotated with 2θ: both even sectors share one rate
+            ocry(-2 * theta, q2)
+            ocry(-2 * theta, q3)
+        else:
+            ucry(xi_p, xi_m, q2)
+            ucry(xi_p, xi_m, q3)
         g.extend([qml.RX(pi / 4, wires=q2), qml.RX(-pi / 4, wires=q3)])
         g.append(qml.CY(wires=[q0, q2]))
         magic_dag()
 
-        # undo the frame
+        # undo the frame (kept for even_input: the output has odd photon numbers)
         g.extend([qml.CNOT(wires=[q3, q0]), qml.CNOT(wires=[q3, q1]), qml.CNOT(wires=[q2, q0])])
         return QuantumScript(g)

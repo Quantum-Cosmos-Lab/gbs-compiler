@@ -10,4 +10,5 @@
         - PhaseShift
         - Displacement
         - Squeeze
+        - SqueezedVacuum
         - BeamSplitter

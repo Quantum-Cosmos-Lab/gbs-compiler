@@ -32,6 +32,7 @@ from gbs_compiler.operations import (
     Displacement,
     PhaseShift,
     Squeeze,
+    SqueezedVacuum,
 )
 
 __all__ = ["CompilerGBS"]
@@ -49,38 +50,52 @@ class CompilerGBS:
     fock_cutoff : int
         Photon-number truncation.  Must be **2** (1 qubit/mode) or **4**
         (2 qubits/mode).
+    low_photon_bs : bool
+        If ``True`` (cutoff 4 only), compile every ``BSgate`` with the
+        approximate ``low_photon`` decomposition (24 instead of 28 two-qubit
+        gates, 8 on squeezed-vacuum inputs).  It is exact only if at most
+        three photons meet at any beam splitter; otherwise the result is an
+        approximation.  No effect at cutoff 2.
 
     Attributes
     ----------
     fock_cutoff : int
+    low_photon_bs : bool
     num_qubits_per_mode : int
         Qubits per optical mode (``ceil(log2(fock_cutoff))``).
 
     Supported Blackbird gates
     -------------------------
     ``Squeezed(r, φ)``
-        Squeezed vacuum; compiled as ``Sgate(r, φ)`` (the input is assumed,
-        not checked, to be vacuum).
+        Squeezed vacuum preparation; compiled with :class:`SqueezedVacuum`.
+        Must be the first operation on its mode.
     ``Sgate(r, φ)``
-        Single-mode squeezing.
+        Single-mode squeezing.  When it is the first operation on its mode
+        (mode still in vacuum), the simplified :class:`SqueezedVacuum`
+        decomposition is used.
     ``Dgate(r, φ)``
         Displacement.
     ``Rgate(φ)``
         Phase rotation.
     ``BSgate(θ, φ)``
         Beam splitter with arbitrary angles (defaults ``θ = π/4``,
-        ``φ = 0``, i.e. 50:50).
+        ``φ = 0``, i.e. 50:50).  At cutoff 4, when both input modes hold
+        only even photon numbers (vacuum or squeezed vacuum, possibly
+        followed by ``Rgate``), the reduced ``even_input`` decomposition is
+        used.
 
     Raises
     ------
     ValueError
-        If *fock_cutoff* is not 2 or 4.
+        If *fock_cutoff* is not 2 or 4, or (at compile time) if ``Squeezed``
+        is applied to a mode that was already acted on.
     NotImplementedError
         On encountering an unsupported Blackbird operation.
     """
 
-    def __init__(self, fock_cutoff: int) -> None:
+    def __init__(self, fock_cutoff: int, low_photon_bs: bool = False) -> None:
         self.fock_cutoff = fock_cutoff
+        self.low_photon_bs = low_photon_bs
         self.num_qubits_per_mode = CVOperation(fock_cutoff).num_qubits_per_mode
 
     # ------------------------------------------------------------------
@@ -98,17 +113,20 @@ class CompilerGBS:
         Returns
         -------
         str
-            OpenQASM 2.0 program string (``gphase`` lines stripped).
+            OpenQASM 2.0 program string (``gphase`` lines and identity gates
+            stripped).  The register always covers all modes, even those
+            left without gates.
         """
         script = self._load_blackbird(bb_circuit)
-        qasm = qml.to_openqasm(script)
+        qasm = qml.to_openqasm(script, wires=range(self.required_qubits_num(bb_circuit)))
         return self._remove_gphase(qasm)
 
     def compile_to_pennylane(self, bb_circuit: str) -> QuantumScript:
         """Compile a Blackbird circuit string to a PennyLane ``QuantumScript``.
 
         This is useful when you want to inspect or further transform the
-        circuit before exporting.
+        circuit before exporting.  Gates equal to the identity (up to a
+        global phase) are removed.
 
         Parameters
         ----------
@@ -222,6 +240,12 @@ class CompilerGBS:
         r, phi = self._parse_operation_args_r_phi(op)
         return Squeeze(self.fock_cutoff).gate_decomposition(r=r, phi=phi, mode=op["modes"][0])
 
+    def _compile_squeezed_vacuum(self, op: dict[str, Any]) -> QuantumScript:
+        r, phi = self._parse_operation_args_r_phi(op)
+        return SqueezedVacuum(self.fock_cutoff).gate_decomposition(
+            r=r, phi=phi, mode=op["modes"][0]
+        )
+
     def _compile_dgate(self, op: dict[str, Any]) -> QuantumScript:
         r, phi = self._parse_operation_args_r_phi(op)
         return Displacement(self.fock_cutoff).gate_decomposition(r=r, phi=phi, mode=op["modes"][0])
@@ -235,11 +259,22 @@ class CompilerGBS:
         return BeamSplitter(self.fock_cutoff).gate_decomposition(
             theta=theta,
             phi=phi,
-            modes=tuple(op["modes"])
+            modes=tuple(op["modes"]),
+            low_photon=self.low_photon_bs,
+        )
+
+    def _compile_bsgate_even_input(self, op: dict[str, Any]) -> QuantumScript:
+        theta, phi = self._parse_operation_args_theta_phi(op)
+        return BeamSplitter(self.fock_cutoff).gate_decomposition(
+            theta=theta,
+            phi=phi,
+            modes=tuple(op["modes"]),
+            even_input=True,
+            low_photon=self.low_photon_bs,
         )
 
     _OP_DISPATCH = {
-        "Squeezed": "_compile_sgate",
+        "Squeezed": "_compile_squeezed_vacuum",
         "Sgate": "_compile_sgate",
         "Dgate": "_compile_dgate",
         "Rgate": "_compile_rgate",
@@ -250,6 +285,8 @@ class CompilerGBS:
         """Parse Blackbird and return a ``QuantumScript``."""
         program = bb.loads(bb_circuit)
         gates: list = []
+        touched_modes: set[int] = set()  # modes no longer guaranteed to be in vacuum
+        odd_modes: set[int] = set()  # modes that may hold odd photon numbers (LSB != 0)
 
         for op in program.operations:
             name = op["op"]
@@ -260,10 +297,37 @@ class CompilerGBS:
                     f"Operation '{name}' is not supported. "
                     f"Supported: {sorted(self._OP_DISPATCH)}"
                 )
+            if name == "Squeezed" and op["modes"][0] in touched_modes:
+                raise ValueError(
+                    f"'Squeezed' prepares a state and must be the first operation on "
+                    f"mode {op['modes'][0]}, but the mode was already acted on."
+                )
+            if name == "Sgate" and op["modes"][0] not in touched_modes:
+                method_name = "_compile_squeezed_vacuum"
+            if (
+                name == "BSgate"
+                and self.fock_cutoff == 4
+                and not odd_modes.intersection(op["modes"])
+            ):
+                method_name = "_compile_bsgate_even_input"
 
             gates.extend(list(getattr(self, method_name)(op)))
+            touched_modes.update(op["modes"])
+            # squeezed vacuum and Rgate keep photon numbers in {0, 2}
+            if method_name not in ("_compile_squeezed_vacuum", "_compile_rgate"):
+                odd_modes.update(op["modes"])
 
-        return QuantumScript(ops=gates)
+        return QuantumScript(ops=[g for g in gates if not self._is_identity(g)])
+
+    @staticmethod
+    def _is_identity(op: Any, atol: float = 1e-10) -> bool:
+        """Return ``True`` if *op* is the identity up to a global phase."""
+        if isinstance(op, qml.Identity):
+            return True
+        if op.num_params == 0:
+            return False
+        M = qml.matrix(op)
+        return bool(np.allclose(M, M[0, 0] * np.eye(M.shape[0]), atol=atol))
 
     @staticmethod
     def _remove_gphase(qasm_program: str) -> str:
