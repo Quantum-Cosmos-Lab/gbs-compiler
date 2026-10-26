@@ -102,17 +102,20 @@ class CompilerGBS:
         Returns
         -------
         str
-            OpenQASM 2.0 program string (``gphase`` lines stripped).
+            OpenQASM 2.0 program string (``gphase`` lines and identity gates
+            stripped).  The register always covers all modes, even those
+            left without gates.
         """
         script = self._load_blackbird(bb_circuit)
-        qasm = qml.to_openqasm(script)
+        qasm = qml.to_openqasm(script, wires=range(self.required_qubits_num(bb_circuit)))
         return self._remove_gphase(qasm)
 
     def compile_to_pennylane(self, bb_circuit: str) -> QuantumScript:
         """Compile a Blackbird circuit string to a PennyLane ``QuantumScript``.
 
         This is useful when you want to inspect or further transform the
-        circuit before exporting.
+        circuit before exporting.  Gates equal to the identity (up to a
+        global phase) are removed.
 
         Parameters
         ----------
@@ -282,7 +285,17 @@ class CompilerGBS:
             gates.extend(list(getattr(self, method_name)(op)))
             touched_modes.update(op["modes"])
 
-        return QuantumScript(ops=gates)
+        return QuantumScript(ops=[g for g in gates if not self._is_identity(g)])
+
+    @staticmethod
+    def _is_identity(op: Any, atol: float = 1e-10) -> bool:
+        """Return ``True`` if *op* is the identity up to a global phase."""
+        if isinstance(op, qml.Identity):
+            return True
+        if op.num_params == 0:
+            return False
+        M = qml.matrix(op)
+        return bool(np.allclose(M, M[0, 0] * np.eye(M.shape[0]), atol=atol))
 
     @staticmethod
     def _remove_gphase(qasm_program: str) -> str:

@@ -391,6 +391,33 @@ class TestCompilerGBS:
         for op, exp in zip(ops[-len(sq):], sq):
             qml.assert_equal(op, exp)
 
+    @pytest.mark.parametrize("cutoff", [2, 4])
+    def test_no_identity_gates_in_output(self, cutoff):
+        comp = CompilerGBS(fock_cutoff=cutoff)
+        bb = _BB_HEADER + "Sgate(0.3) | 0\nDgate(0.1) | 1\nBSgate(pi/4, 0) | (0, 1)\n"
+        ops = list(comp.compile_to_pennylane(bb))
+        assert ops
+        assert not any(CompilerGBS._is_identity(op) for op in ops)
+        qasm = comp.compile_to_qasm(bb)
+        for line in qasm.splitlines():
+            assert not line.startswith("id ")
+            assert "(0)" not in line and "(0.0)" not in line
+
+    def test_is_identity_keeps_controlled_phase(self):
+        # RZ(2π) = -I is a global phase, but controlled it is not
+        assert CompilerGBS._is_identity(qml.RZ(2 * np.pi, wires=0))
+        assert not CompilerGBS._is_identity(qml.ctrl(qml.RZ(2 * np.pi, wires=1), control=0))
+
+    def test_qasm_register_covers_all_modes(self):
+        comp = CompilerGBS(fock_cutoff=2)
+        bb = _BB_HEADER + "Sgate(0.3) | 0\nDgate(0.1) | 1\n"  # mode 0 ends up with no gates
+        qasm = comp.compile_to_qasm(bb)
+        assert "qreg q[2];" in qasm
+        circ = qml.from_qasm(qasm, measurements=qml.sample())
+        dev = qml.device("default.qubit", wires=2, seed=1)
+        samples = qml.QNode(circ, dev, shots=10)()
+        assert comp.binary_to_photon_meas(samples).shape == (10, 2)
+
     def test_unsupported_op_lists_all_supported(self):
         comp = CompilerGBS(fock_cutoff=4)
         bb = _BB_HEADER + "Kgate(0.3) | 0\n"
