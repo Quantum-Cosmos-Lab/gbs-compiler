@@ -166,6 +166,18 @@ For $\theta \equiv -\pi/2$ (E9) an extra $R(\pi)$ is applied to both modes. E9 d
 
 E1 with $\theta = 2\pi k$ ($k \neq 0$), E8 and E9 hold exactly on all states with $n_1 + n_2 \le 3$. On the blocks $n \ge 4$ the truncated cutoff-4 beam splitter already deviates from the ideal one, so there the compiled circuits of the original and the simplified program can differ.
 
+### Approximate rules
+
+With `simplify_blackbird(..., approximate=True)` three more rules are applied. They change the output distribution, so `SimplifiedProgram.approximation_error` records an error measure for each:
+
+| Rule | Rewrite | `approximation_error[rule]` |
+|:-----|:--------|:----------------------------|
+| A1 | drop `Sgate` / `Squeezed` with $r <$ `r_threshold` | $\sum \sinh^2 r$, the mean photon number removed |
+| A2 | drop `BSgate` with $\|\theta\| <$ `theta_threshold` (mod 2π) | $\sum \|\delta\|$ over the dropped gates |
+| A3 | treat `BSgate` with $\|\theta \mp \pi/2\| <$ `theta_threshold` as E9 | $\sum \|\delta\|$ over the replaced gates |
+
+On the $n$-photon block of the two modes the beam-splitter generator has eigenvalues $n - 2k$, so $\lVert \text{BS}(\theta + \delta) - \text{BS}(\theta) \rVert \le n\,|\delta|$. For A2/A3 the error of the output state is therefore at most $n_{\max} \sum |\delta|$. For A1, dropping a squeezer on vacuum leaves a state with fidelity $1/\cosh r$ to the original. A1 composes with the exact rules: a mode whose squeezer is dropped stays in vacuum, so E6 removes beam splitters that only mix it with other vacuum modes, and E12 removes the mode itself.
+
 ## Compilation pipeline
 
 ```

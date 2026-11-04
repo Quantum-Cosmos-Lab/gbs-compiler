@@ -71,4 +71,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `simplify_blackbird` and `SimplifiedProgram` (`gbs_compiler.simplify`): exact optical-level simplification of Blackbird programs before compilation (rules E1–E9, E11, E12 of `simplification.md`). `SimplifiedProgram.restore_samples` maps samples back to the original modes.
+- Approximate rules A1–A3 (weak squeezers, beam splitters with θ near 0 or ±π/2), enabled with `simplify_blackbird(..., approximate=True, r_threshold, theta_threshold)`; `SimplifiedProgram.approximation_error` reports their error measures.
 - New example `examples/example_simplify.py`.

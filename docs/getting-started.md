@@ -128,6 +128,15 @@ counts = simp.restore_samples(counts)            # back to the original mode ord
 
 Some rules relabel modes (a `BSgate(π/2)` is a mode swap up to phases) or remove modes that always stay in vacuum, so samples of the simplified program must be passed through `restore_samples`. See [Theory](theory.md#optical-level-simplification) for the list of rules.
 
+The approximate rules A1–A3 are off by default. Turn them on with `approximate=True` to also drop weak squeezers and beam splitters with small θ, and to treat beam splitters with θ close to ±π/2 as swaps:
+
+```python
+simp = simplify_blackbird(
+    bb_circuit, approximate=True, r_threshold=0.1, theta_threshold=0.1
+)
+print(simp.approximation_error)                  # e.g. {'A1': 0.0186, 'A2': 0.05}
+```
+
 ## Using individual operations
 
 You don't have to go through the full compiler pipeline.  Each CV operation can be used directly:

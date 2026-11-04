@@ -253,6 +253,99 @@ class TestEquivalence:
 
 
 # ---------------------------------------------------------------------------
+# Approximate rules (A1–A3)
+# ---------------------------------------------------------------------------
+
+def _approx(bb_circuit: str, **kwargs):
+    return simplify_blackbird(bb_circuit, approximate=True, **kwargs)
+
+
+class TestApproximateRules:
+    def test_off_by_default(self):
+        bb_circuit = _BB_HEADER + (
+            "Sgate(0.05) | 0\nSgate(0.3) | 1\nBSgate(0.05) | [0, 1]\nDgate(0.1) | 0\n"
+        )
+        simp = simplify_blackbird(bb_circuit)
+        assert [name for name, _, _ in _ops(simp)] == ["Sgate", "Sgate", "BSgate", "Dgate"]
+        assert simp.approximation_error == {}
+
+    def test_a1_drops_small_squeezing(self):
+        bb_circuit = _BB_HEADER + "Sgate(0.05) | 0\nSgate(1e-15) | 1\nSgate(0.3) | 2\n"
+        simp = _approx(bb_circuit)
+        assert _ops(simp) == [("Sgate", [0.3, 0.0], [0])]
+        assert simp.report["A1"] == 1
+        assert simp.report["E4"] == 1
+        assert simp.approximation_error["A1"] == pytest.approx(np.sinh(0.05) ** 2)
+
+    def test_a1_cascades_into_vacuum_rules(self):
+        bb_circuit = _BB_HEADER + "Sgate(0.05) | 0\nBSgate(0.4) | [0, 1]\n"
+        simp = _approx(bb_circuit)
+        assert simp.num_modes == 0
+        assert simp.report == {"E6": 1, "E12": 2, "A1": 1}
+
+    def test_a2_drops_small_beamsplitter(self):
+        bb_circuit = _BB_HEADER + (
+            "Sgate(0.3) | 0\nSgate(0.2) | 1\n"
+            "BSgate(0.05, 0.3) | [0, 1]\nBSgate(0.2) | [0, 1]\n"
+        )
+        simp = _approx(bb_circuit)
+        assert [args for name, args, _ in _ops(simp) if name == "BSgate"] == [[0.2, 0.0]]
+        assert simp.report["A2"] == 1
+        assert simp.approximation_error["A2"] == pytest.approx(0.05)
+
+    @pytest.mark.parametrize("target", [np.pi / 2, -np.pi / 2])
+    def test_a3_swaps_near_half_pi(self, target):
+        theta = target - 0.05
+        bb_circuit = _BB_HEADER + (
+            "Sgate(0.3) | 0\nDgate(0.2) | 1\n"
+            f"BSgate({theta!r}, 0.4) | [0, 1]\nDgate(0.1) | 0\n"
+        )
+        simp = _approx(bb_circuit)
+        assert "BSgate" not in [name for name, _, _ in _ops(simp)]
+        assert ("Dgate", [0.1, 0.0], [1]) in _ops(simp)
+        assert simp.mode_map == [1, 0]
+        assert simp.report["A3"] == 1
+        assert simp.approximation_error["A3"] == pytest.approx(0.05)
+
+    def test_custom_thresholds(self):
+        bb_circuit = _BB_HEADER + (
+            "Sgate(0.15) | 0\nSgate(0.3) | 1\nBSgate(0.15) | [0, 1]\nDgate(0.1) | 0\n"
+        )
+        assert set(_approx(bb_circuit).report).isdisjoint({"A1", "A2"})
+        simp = _approx(bb_circuit, r_threshold=0.2, theta_threshold=0.2)
+        assert simp.report["A1"] == 1
+        assert simp.report["A2"] == 1
+
+    def test_negative_threshold_raises(self):
+        with pytest.raises(ValueError, match="non-negative"):
+            simplify_blackbird(_BB_HEADER + "Sgate(0.1) | 0\n", r_threshold=-1.0)
+
+    @pytest.mark.parametrize("theta", [0.02, np.pi / 2 + 0.02, -np.pi / 2 - 0.02])
+    def test_beamsplitter_rules_are_close(self, theta):
+        bb_circuit = _BB_HEADER + (
+            "Sgate(0.2) | 0\nDgate(0.2, 0.3) | 1\nBSgate(0.5, 0.2) | [0, 1]\n"
+            f"BSgate({theta!r}, 0.7) | [0, 1]\nBSgate(0.4, 0.1) | [0, 1]\n"
+        )
+        simp = _approx(bb_circuit)
+        assert {"A2", "A3"} & set(simp.report)
+        restored, original = _restored_distribution(simp), _photon_distribution(bb_circuit)
+        assert_allclose(restored, original, atol=0.05)
+        assert not np.allclose(restored, original, atol=1e-6)
+
+    def test_a1_is_close(self):
+        r = 0.05
+        bb_circuit = _BB_HEADER + (
+            f"Sgate({r}) | 0\nSgate(0.3) | 1\nBSgate(0.6, 0.2) | [0, 1]\n"
+        )
+        simp = _approx(bb_circuit)
+        assert simp.report["A1"] == 1
+        restored, original = _restored_distribution(simp), _photon_distribution(bb_circuit)
+        tv_distance = 0.5 * np.abs(restored - original).sum()
+        # fidelity of S(r)|0> with |0> is 1/cosh(r); TV <= trace distance sqrt(1 - F)
+        assert 0 < tv_distance <= np.sqrt(1 - 1 / np.cosh(r))
+
+
+# ---------------------------------------------------------------------------
 # Example circuit
 # ---------------------------------------------------------------------------
 
@@ -270,4 +363,19 @@ def test_n8_graph_example():
 
     assert bs_count(simp.program) < bs_count(bb_circuit)
     assert two_qubit_count(simp.program) < two_qubit_count(bb_circuit)
+    assert simp.restore_samples(np.zeros((1, simp.num_modes), dtype=int)).shape == (1, 8)
+
+
+def test_n8_graph_example_approximate():
+    bb_circuit = bb.dumps(bb.load(str(_EXAMPLES / "example_N8_graph.xbb")))
+    exact = simplify_blackbird(bb_circuit)
+    simp = simplify_blackbird(bb_circuit, approximate=True, r_threshold=0.15)
+    assert simp.report["A1"] == 1  # Sgate(0.136) on mode 6
+
+    def sgate_count(source):
+        return sum(op["op"] == "Sgate" for op in bb.loads(source).operations)
+
+    # mode 6 still receives light from mode 5, so only the squeezer goes
+    assert sgate_count(simp.program) == sgate_count(exact.program) - 1
+    CompilerGBS(4).compile_to_qasm(simp.program)
     assert simp.restore_samples(np.zeros((1, simp.num_modes), dtype=int)).shape == (1, 8)

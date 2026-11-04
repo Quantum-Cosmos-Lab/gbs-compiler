@@ -20,6 +20,18 @@ to the numerical tolerance ``atol``.
 | E11  | absorb `Rgate(φ)` after squeezing a vacuum mode: S(r, θ − 2φ)           |
 | E12  | remove modes that stay in vacuum, re-inserted by `restore_samples`      |
 
+Approximate rules, applied only with ``approximate=True``:
+
+| Rule | Rewrite                                         | `approximation_error[rule]`        |
+|:-----|:------------------------------------------------|:-----------------------------------|
+| A1   | drop `Sgate` / `Squeezed` with r < r_threshold  | Σ sinh²(r), mean photon number removed |
+| A2   | drop `BSgate` with \|θ\| < theta_threshold (mod 2π) | Σ\|δ\| over the dropped gates      |
+| A3   | `BSgate` with \|θ ∓ π/2\| < theta_threshold → E9   | Σ\|δ\| over the replaced gates     |
+
+For A2/A3, on the n-photon block of the two modes
+$\|BS(\theta + \delta) - BS(\theta)\| \le n|\delta|$, so the state error is at most
+$n_{\max} \sum |\delta|$.
+
 E1 (θ = 2πk, k ≠ 0), E8 and E9 are exact on all states with
 $n_1 + n_2 \le 3$.  On the blocks $n \ge 4$ the truncated beam splitter
 (cutoff 4) itself deviates from the ideal one, so the compiled circuits may
@@ -38,7 +50,7 @@ counts = simp.restore_samples(compiler.binary_to_photon_meas(raw_samples))
 
 from __future__ import annotations
 
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -87,6 +99,11 @@ class SimplifiedProgram:
         its photons are measured, or ``None`` if it always stays in vacuum.
     report : dict[str, int]
         How often each rule fired (E12 counts removed modes).
+    approximation_error : dict[str, float]
+        Error measure of each approximate rule that fired: ``"A1"`` is the
+        mean photon number removed, Σ sinh²(r); ``"A2"`` and ``"A3"`` are the
+        summed angle deviations Σ|δ| (radians).  Empty when
+        ``approximate=False``.
     """
 
     program: str
@@ -94,6 +111,7 @@ class SimplifiedProgram:
     original_num_modes: int
     mode_map: list[int | None]
     report: dict[str, int] = field(default_factory=dict)
+    approximation_error: dict[str, float] = field(default_factory=dict)
 
     def restore_samples(self, photon_counts: NDArray[np.integer]) -> NDArray[np.integer]:
         """Map photon counts of the simplified program back to the original modes.
@@ -134,8 +152,14 @@ class SimplifiedProgram:
 # Public API
 # ---------------------------------------------------------------------------
 
-def simplify_blackbird(bb_circuit: str, atol: float = 1e-10) -> SimplifiedProgram:
-    """Apply the exact optical-level rewrite rules to a Blackbird program.
+def simplify_blackbird(
+    bb_circuit: str,
+    atol: float = 1e-10,
+    approximate: bool = False,
+    r_threshold: float = 0.1,
+    theta_threshold: float = 0.1,
+) -> SimplifiedProgram:
+    """Apply the optical-level rewrite rules to a Blackbird program.
 
     The rules are applied repeatedly until none of them fires, then modes
     that stay in vacuum are removed (E12).  The rules assume photon-number
@@ -147,6 +171,16 @@ def simplify_blackbird(bb_circuit: str, atol: float = 1e-10) -> SimplifiedProgra
         Blackbird program source (as returned by ``blackbird.dumps``).
     atol : float
         Absolute tolerance for treating parameters as 0, π/2 or π.
+    approximate : bool
+        If ``True``, also apply the approximate rules A1–A3.  The result is
+        then no longer equivalent to the input; see
+        :attr:`SimplifiedProgram.approximation_error`.
+    r_threshold : float
+        A1: drop ``Sgate`` / ``Squeezed`` with ``|r| < r_threshold``.
+        Ignored unless *approximate*.
+    theta_threshold : float
+        A2 / A3: treat ``BSgate`` angles within *theta_threshold* of 0 or
+        ±π/2 (mod 2π) as exactly 0 or ±π/2.  Ignored unless *approximate*.
 
     Returns
     -------
@@ -155,7 +189,8 @@ def simplify_blackbird(bb_circuit: str, atol: float = 1e-10) -> SimplifiedProgra
     Raises
     ------
     ValueError
-        If a supported gate has a non-numeric (symbolic) parameter.
+        If a supported gate has a non-numeric (symbolic) parameter, or a
+        threshold is negative.
 
     Notes
     -----
@@ -163,12 +198,19 @@ def simplify_blackbird(bb_circuit: str, atol: float = 1e-10) -> SimplifiedProgra
     ``BSgate`` are kept unchanged and act as barriers: their modes are
     treated as non-vacuum and no ``Rgate`` is merged or dropped across them.
     """
+    if r_threshold < 0 or theta_threshold < 0:
+        raise ValueError("r_threshold and theta_threshold must be non-negative.")
     program = bb.loads(bb_circuit)
     ops = [_parse_op(op) for op in program.operations]
     used = {m for op in ops for m in op.modes}
     original_num_modes = max(used) + 1 if used else 0
 
-    simplifier = _Simplifier(original_num_modes, atol)
+    simplifier = _Simplifier(
+        original_num_modes,
+        atol,
+        r_tol=r_threshold if approximate else None,
+        theta_tol=theta_threshold if approximate else None,
+    )
     ops = simplifier.run(ops)
     ops, mode_map, num_modes = simplifier.remove_vacuum_modes(ops)
 
@@ -179,10 +221,17 @@ def simplify_blackbird(bb_circuit: str, atol: float = 1e-10) -> SimplifiedProgra
         mode_map=mode_map,
         report={
             rule: count
-            for rule, count in sorted(simplifier.report.items(), key=lambda kv: int(kv[0][1:]))
+            for rule, count in sorted(simplifier.report.items(), key=_rule_order)
             if count
         },
+        approximation_error=dict(sorted(simplifier.error.items(), key=_rule_order)),
     )
+
+
+def _rule_order(item: tuple[str, Any]) -> tuple[bool, int]:
+    """Sort exact rules (E*) before approximate ones (A*), then by number."""
+    rule = item[0]
+    return (rule[0] != "E", int(rule[1:]))
 
 
 # ---------------------------------------------------------------------------
@@ -192,14 +241,33 @@ def simplify_blackbird(bb_circuit: str, atol: float = 1e-10) -> SimplifiedProgra
 class _Simplifier:
     """Holds the tolerance, rule counters and the output-mode relabelling."""
 
-    def __init__(self, num_modes: int, atol: float) -> None:
+    def __init__(
+        self,
+        num_modes: int,
+        atol: float,
+        r_tol: float | None = None,
+        theta_tol: float | None = None,
+    ) -> None:
         self.atol = atol
+        # thresholds of the approximate rules A1 and A2/A3 (None: disabled)
+        self.r_tol = r_tol
+        self.theta_tol = theta_tol
         self.report: Counter[str] = Counter()
+        self.error: defaultdict[str, float] = defaultdict(float)  # error measure of A1–A3
         # out_wire[m]: mode on which original mode m is measured (changed by E9)
         self.out_wire = list(range(num_modes))
 
     def _is_zero_mod_2pi(self, angle: float) -> bool:
         return abs(_wrap(angle)) < self.atol
+
+    def _near(self, angle: float, target: float) -> str | None:
+        """Return ``"exact"`` / ``"approx"`` if *angle* ≈ *target* (mod 2π), else None."""
+        delta = abs(_wrap(angle - target))
+        if delta < self.atol:
+            return "exact"
+        if self.theta_tol is not None and delta < self.theta_tol:
+            return "approx"
+        return None
 
     def run(self, ops: list[_Op]) -> list[_Op]:
         passes = (
@@ -217,18 +285,25 @@ class _Simplifier:
             if [op.key() for op in ops] == before:
                 return ops
 
-    # -- E4 ------------------------------------------------------------------
+    # -- E4, A1 --------------------------------------------------------------
 
     def _drop_zero_squeezing(self, ops: list[_Op]) -> list[_Op]:
         out = []
         for op in ops:
-            if op.name in _SQUEEZERS and abs(op.args[0]) < self.atol:
-                self.report["E4"] += 1
-                continue
+            if op.name in _SQUEEZERS:
+                r = abs(op.args[0])
+                if r < self.atol:
+                    self.report["E4"] += 1
+                    continue
+                if self.r_tol is not None and r < self.r_tol:
+                    # A1: drops mean photon number sinh²(r)
+                    self.report["A1"] += 1
+                    self.error["A1"] += float(np.sinh(r) ** 2)
+                    continue
             out.append(op)
         return out
 
-    # -- E1, E8, E9 ----------------------------------------------------------
+    # -- E1, E8, E9, A2, A3 --------------------------------------------------
 
     def _special_beamsplitters(self, ops: list[_Op]) -> list[_Op]:
         ops = list(ops)
@@ -240,9 +315,13 @@ class _Simplifier:
                 continue
             theta, phi = op.args
             a, b = op.modes
-            if self._is_zero_mod_2pi(theta):
-                # E1: BS(0, φ) = I
-                self.report["E1"] += 1
+            match = self._near(theta, 0.0)
+            if match:
+                # E1: BS(0, φ) = I; A2: approximately
+                rule = "E1" if match == "exact" else "A2"
+                self.report[rule] += 1
+                if rule == "A2":
+                    self.error[rule] += abs(_wrap(theta))
                 del ops[i]
                 continue
             if self._is_zero_mod_2pi(theta - np.pi):
@@ -251,9 +330,14 @@ class _Simplifier:
                 ops[i:i + 1] = [_Op("Rgate", [np.pi], [a]), _Op("Rgate", [np.pi], [b])]
                 continue
             for target, extra in ((np.pi / 2, 0.0), (-np.pi / 2, np.pi)):
-                if self._is_zero_mod_2pi(theta - target):
+                match = self._near(theta, target)
+                if match:
                     # E9: BS(π/2, φ) = (R(-φ) ⊗ R(π + φ)) · SWAP; BS(-π/2) adds R(π) ⊗ R(π)
-                    self.report["E9"] += 1
+                    # A3: the same for θ only close to ±π/2
+                    rule = "E9" if match == "exact" else "A3"
+                    self.report[rule] += 1
+                    if rule == "A3":
+                        self.error[rule] += abs(_wrap(theta - target))
                     ops[i:i + 1] = [
                         _Op("Rgate", [-phi + extra], [a]),
                         _Op("Rgate", [np.pi + phi + extra], [b]),
