@@ -109,6 +109,34 @@ qasm = compiler.compile_to_qasm(bb_circuit)
 !!! warning
     The circuit is exact only on inputs with $n_1 + n_2 \le 3$. On the $n = 4$ block it rotates with frequency $2\theta$ instead of $2\sqrt{3}\,\theta$, so with more photons it is an approximation.
 
+## Simplifying circuits
+
+Programs produced by GBS tools often contain gates that do nothing (e.g. `BSgate(1e-15)`, `Sgate(1e-18)`), phases that do not affect photon-number measurements, or beam splitters that are just swaps. `simplify_blackbird` removes them exactly at the optical level before compilation:
+
+```python
+from gbs_compiler import CompilerGBS, simplify_blackbird
+
+simp = simplify_blackbird(bb_circuit)            # atol=1e-10 by default
+print(simp.report)                               # e.g. {'E1': 2, 'E7': 7, 'E9': 1}
+
+compiler = CompilerGBS(fock_cutoff=4)
+qasm = compiler.compile_to_qasm(simp.program)    # compile the simplified program
+# ... run and sample ...
+counts = compiler.binary_to_photon_meas(raw_samples)
+counts = simp.restore_samples(counts)            # back to the original mode order
+```
+
+Some rules relabel modes (a `BSgate(π/2)` is a mode swap up to phases) or remove modes that always stay in vacuum, so samples of the simplified program must be passed through `restore_samples`. See [Theory](theory.md#optical-level-simplification) for the list of rules.
+
+The approximate rules A1–A3 are off by default. Turn them on with `approximate=True` to also drop weak squeezers and beam splitters with small θ, and to treat beam splitters with θ close to ±π/2 as swaps:
+
+```python
+simp = simplify_blackbird(
+    bb_circuit, approximate=True, r_threshold=0.1, theta_threshold=0.1
+)
+print(simp.approximation_error)                  # e.g. {'A1': 0.0186, 'A2': 0.05}
+```
+
 ## Using individual operations
 
 You don't have to go through the full compiler pipeline.  Each CV operation can be used directly:
