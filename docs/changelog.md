@@ -65,3 +65,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `BeamSplitter.gate_decomposition` accepts `even_input=True` (cutoff 4): a reduced circuit (12 instead of 28 two-qubit gates) valid when both input modes have photon numbers in {0, 2}. `CompilerGBS` uses it for beam splitters acting on (squeezed) vacuum modes, optionally after `Rgate`.
 - `BeamSplitter.gate_decomposition` accepts `low_photon=True` (cutoff 4): approximate circuit exact for inputs with at most 3 photons (24 instead of 28 two-qubit gates; 8 combined with `even_input`). Enabled in the compiler with `CompilerGBS(fock_cutoff=4, low_photon_bs=True)`.
 - New example `examples/example_gbs.xbb`: pure GBS circuit (squeezed vacua + beam-splitter network).
+
+## [Unreleased]
+
+### Added
+
+- `simplify_blackbird` and `SimplifiedProgram` (`gbs_compiler.simplify`): exact optical-level simplification of Blackbird programs before compilation (rules E1–E9, E11, E12 of `simplification.md`). `SimplifiedProgram.restore_samples` maps samples back to the original modes.
+- New example `examples/example_simplify.py`.

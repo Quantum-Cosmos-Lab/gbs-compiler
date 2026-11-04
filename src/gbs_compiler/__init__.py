@@ -25,6 +25,9 @@ operations
 compiler
     High-level :class:`CompilerGBS` class that orchestrates parsing and
     compilation.
+simplify
+    Exact optical-level rewrites of a Blackbird program
+    (:func:`simplify_blackbird`) applied before compilation.
 """
 
 from importlib.metadata import PackageNotFoundError, version
@@ -45,6 +48,7 @@ from gbs_compiler.operations import (
     decompose_kronecker,
     matrix_to_U3,
 )
+from gbs_compiler.simplify import SimplifiedProgram, simplify_blackbird
 
 __all__ = [
     "CompilerGBS",
@@ -56,4 +60,6 @@ __all__ = [
     "BeamSplitter",
     "matrix_to_U3",
     "decompose_kronecker",
+    "SimplifiedProgram",
+    "simplify_blackbird",
 ]

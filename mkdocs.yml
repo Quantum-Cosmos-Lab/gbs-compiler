@@ -39,6 +39,7 @@ nav:
       - reference/index.md
       - Operations: reference/operations.md
       - Compiler: reference/compiler.md
+      - Simplification: reference/simplify.md
   - Changelog: changelog.md
 
 plugins:

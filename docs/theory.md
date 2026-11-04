@@ -144,6 +144,28 @@ The remaining parts cannot be simplified by the same argument:
 
 `BeamSplitter.gate_decomposition(..., low_photon=True)` returns this circuit and `CompilerGBS(fock_cutoff=4, low_photon_bs=True)` uses it for every beam splitter. If more than three photons can meet at a beam splitter, the blocks $n \ge 4$ matter and the full circuit should be used (which itself follows the truncated generator there, not the ideal beam splitter).
 
+## Optical-level simplification
+
+`simplify_blackbird` rewrites the Blackbird program before compilation. The rules are exact for ideal optics followed by photon-number measurement of all modes, up to a numerical tolerance `atol`:
+
+| Rule | Rewrite | Why it is exact |
+|:-----|:--------|:----------------|
+| E1  | drop `BSgate(θ, φ)` with θ ≡ 0 (mod 2π) | $\text{BS}(0, \phi) = I$ |
+| E2  | drop `Rgate(φ)` with φ ≡ 0 (mod 2π) | $R(0) = I$ |
+| E3  | merge consecutive `Rgate`s on one mode | $R(a)R(b) = R(a + b)$ |
+| E4  | drop `Sgate` / `Squeezed` with $r \approx 0$ | $S(0) = I$ |
+| E5  | drop `Rgate` on a vacuum mode | $R(\phi)\,\|0\rangle = \|0\rangle$ |
+| E6  | drop `BSgate` between two vacuum modes | passive transforms map vacuum to vacuum |
+| E7  | drop `Rgate`s after the last non-phase operation on a mode | phases commute with photon-number measurement |
+| E8  | `BSgate(π, φ)` → `Rgate(π)` on both modes | $\text{BS}(\pi, \phi) = R(\pi) \otimes R(\pi)$ |
+| E9  | `BSgate(±π/2, φ)` → relabel the modes, plus `Rgate`s | $\text{BS}(\pi/2, \phi) = \bigl(R(-\phi) \otimes R(\pi + \phi)\bigr)\,\text{SWAP}$ |
+| E11 | absorb `Rgate(φ)` after squeezing a vacuum mode | $R(\phi)\,S(r, \theta)\,\|0\rangle = S(r, \theta - 2\phi)\,\|0\rangle$ |
+| E12 | remove modes that stay in vacuum | they always measure 0 photons |
+
+For $\theta \equiv -\pi/2$ (E9) an extra $R(\pi)$ is applied to both modes. E9 does not swap the qubits: all later operations are relabelled instead, and `SimplifiedProgram.mode_map` records where each original mode is measured. E12 removes modes from the program; `restore_samples` re-inserts their zero columns.
+
+E1 with $\theta = 2\pi k$ ($k \neq 0$), E8 and E9 hold exactly on all states with $n_1 + n_2 \le 3$. On the blocks $n \ge 4$ the truncated cutoff-4 beam splitter already deviates from the ideal one, so there the compiled circuits of the original and the simplified program can differ.
+
 ## Compilation pipeline
 
 ```
