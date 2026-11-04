@@ -66,7 +66,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `BeamSplitter.gate_decomposition` accepts `low_photon=True` (cutoff 4): approximate circuit exact for inputs with at most 3 photons (24 instead of 28 two-qubit gates; 8 combined with `even_input`). Enabled in the compiler with `CompilerGBS(fock_cutoff=4, low_photon_bs=True)`.
 - New example `examples/example_gbs.xbb`: pure GBS circuit (squeezed vacua + beam-splitter network).
 
-## [Unreleased]
+## [0.2.5]
 
 ### Added
 
